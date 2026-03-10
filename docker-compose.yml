@@ -1,0 +1,94 @@
+# =============================================================================
+# OpenVEPA Docker Compose
+# =============================================================================
+#
+# Quick start:
+#   docker compose up -d
+#
+# With Ollama (local LLM):
+#   docker compose --profile with-ollama up -d
+#
+# With SSH enabled:
+#   SSH_ENABLED=true docker compose up -d
+#
+# Stop:
+#   docker compose down
+#
+# View logs:
+#   docker compose logs -f openvepa
+# =============================================================================
+
+services:
+  openvepa:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: openvepa
+    restart: unless-stopped
+    ports:
+      - "${OPENVEPA_PORT:-5000}:5000"
+      - "${SSH_PORT:-2222}:22"
+    volumes:
+      - openvepa-data:/home/openvepa/.openvepa
+    environment:
+      - OPENVEPA_PORT=${OPENVEPA_PORT:-5000}
+      - SSH_ENABLED=${SSH_ENABLED:-false}
+      - OPENVEPA_PROVIDER=${OPENVEPA_PROVIDER:-}
+      - OPENVEPA_MODEL=${OPENVEPA_MODEL:-}
+      - OPENVEPA_API_KEY=${OPENVEPA_API_KEY:-}
+      - OPENVEPA_OLLAMA_ENDPOINT=${OPENVEPA_OLLAMA_ENDPOINT:-http://ollama:11434}
+    # NET_ADMIN required for UFW firewall rules inside the container
+    cap_add:
+      - NET_ADMIN
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    networks:
+      - openvepa-net
+    depends_on:
+      ollama:
+        condition: service_started
+        required: false
+
+  # Optional Ollama sidecar for local LLM inference.
+  # Activate with: docker compose --profile with-ollama up -d
+  ollama:
+    image: ollama/ollama:latest
+    container_name: openvepa-ollama
+    profiles:
+      - with-ollama
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    # Uncomment for NVIDIA GPU support:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    networks:
+      - openvepa-net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+volumes:
+  openvepa-data:
+    name: openvepa-data
+  ollama-data:
+    name: openvepa-ollama-data
+
+networks:
+  openvepa-net:
+    name: openvepa-net
+    driver: bridge

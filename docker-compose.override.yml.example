@@ -1,0 +1,22 @@
+# =============================================================================
+# OpenVEPA Development Overrides
+# =============================================================================
+# Copy this file to docker-compose.override.yml for local development.
+# Docker Compose merges it automatically with docker-compose.yml.
+#
+#   cp docker-compose.override.yml.example docker-compose.override.yml
+#   docker compose --profile with-ollama up -d
+# =============================================================================
+
+services:
+  openvepa:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - OPENVEPA_PROVIDER=ollama
+      - OPENVEPA_MODEL=llama3.2
+      - OPENVEPA_OLLAMA_ENDPOINT=http://ollama:11434
+    # Mount local source for development (optional)
+    # volumes:
+    #   - ./src:/src:ro

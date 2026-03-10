@@ -1,0 +1,33 @@
+# Version control
+.git
+.gitignore
+
+# Agent and tooling metadata
+.agents
+.serena
+.vscode
+.vs
+.idea
+
+# Build artifacts (rebuilt in container)
+**/bin
+**/obj
+**/node_modules
+
+# Documentation not needed at runtime
+docs/research
+*.md
+!README.md
+
+# Docker build context (exclude compose files, but keep entrypoint)
+docker/*
+!docker/entrypoint.sh
+
+# Test projects (not shipped)
+tests
+
+# IDE and OS files
+*.user
+*.suo
+.DS_Store
+Thumbs.db
