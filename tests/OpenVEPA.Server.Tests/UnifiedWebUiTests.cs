@@ -157,7 +157,7 @@ public sealed class UnifiedWebUiTests : IDisposable
             response.StatusCode.Should().Be(HttpStatusCode.OK);
             response.Content.Headers.ContentType!.MediaType.Should().Be("text/html");
             var html = await response.Content.ReadAsStringAsync();
-            html.Should().Contain("OpenVEPA Dashboard");
+            html.Should().Contain("OpenVEPA WebUI");
         });
     }
 

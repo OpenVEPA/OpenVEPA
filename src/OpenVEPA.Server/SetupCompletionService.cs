@@ -19,6 +19,9 @@ internal sealed class SetupCompletionService
         _isComplete = File.Exists(_configPath);
     }
 
+    /// <summary>Gets the full path to the persisted application configuration file.</summary>
+    internal string ConfigPath => _configPath;
+
     /// <summary>Whether initial setup has been completed.</summary>
     internal bool IsSetupComplete => _isComplete;
 

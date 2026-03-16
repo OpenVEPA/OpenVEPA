@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 namespace OpenVEPA.Providers;
 
 /// <summary>
@@ -26,6 +28,7 @@ public sealed class OpenAiOptions
     public string? ApiKey { get; set; }
 
     /// <summary>The chat model to use.</summary>
+    [ConfigurationKeyName("ModelId")]
     public string Model { get; set; } = "gpt-4o";
 
     /// <summary>Optional custom endpoint for OpenAI-compatible APIs.</summary>
@@ -39,5 +42,6 @@ public sealed class OllamaOptions
     public string Endpoint { get; set; } = "http://localhost:11434";
 
     /// <summary>The model to use.</summary>
+    [ConfigurationKeyName("ModelId")]
     public string Model { get; set; } = "llama3";
 }

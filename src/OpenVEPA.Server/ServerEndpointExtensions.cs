@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
+using OpenVEPA.Server.Api;
 using OpenVEPA.Server.Auth;
 using OpenVEPA.Server.Hubs;
 using OpenVEPA.Server.Middleware;
@@ -79,6 +80,12 @@ public static class ServerEndpointExtensions
                 ? Results.Ok(new { valid = true, tokenId })
                 : Results.Unauthorized();
         }).RequireAuthorization();
+
+        app.MapSessionApiEndpoints();
+        app.MapAgentsApiEndpoints();
+        app.MapSkillsApiEndpoints();
+        app.MapPreferencesApiEndpoints();
+        app.MapSystemApiEndpoints();
 
         return app;
     }

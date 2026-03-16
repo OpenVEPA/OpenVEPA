@@ -10,7 +10,7 @@ namespace OpenVEPA.Storage;
 /// SQLite-backed session store. Reads go directly to the database.
 /// Writes are serialized through the <see cref="DatabaseWriteQueue"/>.
 /// </summary>
-public sealed class SqliteSessionStore
+public sealed class SqliteSessionStore : ISessionStore
 {
     private readonly DatabaseWriteQueue _writeQueue;
     private readonly IDbContextFactory<OpenVepaDbContext> _dbFactory;

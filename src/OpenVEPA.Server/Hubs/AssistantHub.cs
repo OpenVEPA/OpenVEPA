@@ -4,25 +4,24 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using OpenVEPA.Core.Agents;
 using OpenVEPA.Core.Sessions;
-using OpenVEPA.Storage;
 
 namespace OpenVEPA.Server.Hubs;
 
 /// <summary>
 /// SignalR hub for the assistant chat interface.
 /// Delegates message processing to <see cref="IAgentRuntime"/>
-/// and session management to <see cref="SqliteSessionStore"/>.
+/// and session management to <see cref="ISessionStore"/>.
 /// </summary>
 [Authorize]
 public sealed class AssistantHub : Hub
 {
     private readonly IAgentRuntime _agentRuntime;
-    private readonly SqliteSessionStore _sessionStore;
+    private readonly ISessionStore _sessionStore;
     private readonly ILogger<AssistantHub> _logger;
 
     public AssistantHub(
         IAgentRuntime agentRuntime,
-        SqliteSessionStore sessionStore,
+        ISessionStore sessionStore,
         ILogger<AssistantHub> logger)
     {
         _agentRuntime = agentRuntime ?? throw new ArgumentNullException(nameof(agentRuntime));

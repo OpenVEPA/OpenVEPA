@@ -2,6 +2,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using OpenVEPA.Core.Preferences;
+using OpenVEPA.Core.Sessions;
 using OpenVEPA.Core.Storage;
 
 namespace OpenVEPA.Storage;
@@ -60,6 +61,7 @@ public static class StorageServiceExtensions
             _ => new FileDocumentStore(documentStorePath));
 
         services.AddSingleton<SqliteSessionStore>();
+        services.AddSingleton<ISessionStore>(sp => sp.GetRequiredService<SqliteSessionStore>());
         services.AddScoped<IUserProfileService, SqliteUserProfileService>();
         services.AddSingleton<SqliteTokenStore>();
         services.AddSingleton<SqliteLlmAuditLogger>();
