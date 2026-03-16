@@ -7,17 +7,17 @@
 #   docker build -t openvepa:latest .
 #
 # Run (minimal):
-#   docker run -d -p 5000:5000 --name openvepa openvepa:latest
+#   docker run -d -p 8371:8371 --name openvepa openvepa:latest
 #
 # Run (with SSH and UFW, requires NET_ADMIN for iptables):
-#   docker run -d -p 5000:5000 -p 2222:22 \
+#   docker run -d -p 8371:8371 -p 2222:22 \
 #     --cap-add=NET_ADMIN \
 #     -e SSH_ENABLED=true \
 #     -v openvepa-data:/home/openvepa/.openvepa \
 #     --name openvepa openvepa:latest
 #
 # Environment variables:
-#   OPENVEPA_PORT             - Server port (default: 5000)
+#   OPENVEPA_PORT             - Server port (default: 8371)
 #   SSH_ENABLED               - Enable SSH server (default: false)
 #   OPENVEPA_PROVIDER         - AI provider name (empty = setup wizard)
 #   OPENVEPA_MODEL            - Model identifier
@@ -50,8 +50,10 @@ COPY src/OpenVEPA.Channels.Discord/OpenVEPA.Channels.Discord.csproj src/OpenVEPA
 COPY src/OpenVEPA.Channels.Email/OpenVEPA.Channels.Email.csproj src/OpenVEPA.Channels.Email/
 COPY src/OpenVEPA.Hub.Client/OpenVEPA.Hub.Client.csproj src/OpenVEPA.Hub.Client/
 
-# Restore NuGet packages (cached unless .csproj files change)
-RUN dotnet restore OpenVEPA.slnx
+# Restore NuGet packages (cached unless .csproj files change).
+# Restore the CLI project (not the full solution) because test projects
+# are excluded from the Docker build context via .dockerignore.
+RUN dotnet restore src/OpenVEPA.Cli/OpenVEPA.Cli.csproj
 
 # Copy all source code
 COPY src/ src/
@@ -97,7 +99,7 @@ RUN groupadd -r openvepa && \
 RUN ufw default deny incoming && \
     ufw default allow outgoing && \
     ufw allow 22/tcp comment 'SSH' && \
-    ufw allow 5000/tcp comment 'OpenVEPA WebUI/API'
+    ufw allow 8371/tcp comment 'OpenVEPA WebUI/API'
 
 # Security: harden SSH configuration.
 # - Disable root login to prevent privilege escalation.
@@ -121,7 +123,7 @@ RUN chmod +x /entrypoint.sh
 # ---------------------------------------------------------------------------
 ENV OPENVEPA_HOME=/home/openvepa/.openvepa \
     DOTNET_RUNNING_IN_CONTAINER=true \
-    OPENVEPA_PORT=5000 \
+    OPENVEPA_PORT=8371 \
     SSH_ENABLED=false
 
 # Provider configuration (empty = use defaults or setup wizard)
@@ -152,7 +154,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -sf http://localhost:${OPENVEPA_PORT}/health || exit 1
 
 # Expose application port and SSH port
-EXPOSE 5000 22
+EXPOSE 8371 22
 
 # Use tini as PID 1 for proper signal forwarding and zombie reaping.
 # Without tini, the .NET process runs as PID 1 and may not handle

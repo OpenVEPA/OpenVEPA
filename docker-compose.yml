@@ -26,12 +26,12 @@ services:
     container_name: openvepa
     restart: unless-stopped
     ports:
-      - "${OPENVEPA_PORT:-5000}:5000"
+      - "${OPENVEPA_PORT:-8371}:8371"
       - "${SSH_PORT:-2222}:22"
     volumes:
       - openvepa-data:/home/openvepa/.openvepa
     environment:
-      - OPENVEPA_PORT=${OPENVEPA_PORT:-5000}
+      - OPENVEPA_PORT=${OPENVEPA_PORT:-8371}
       - SSH_ENABLED=${SSH_ENABLED:-false}
       - OPENVEPA_PROVIDER=${OPENVEPA_PROVIDER:-}
       - OPENVEPA_MODEL=${OPENVEPA_MODEL:-}
@@ -41,7 +41,7 @@ services:
     cap_add:
       - NET_ADMIN
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:5000/health"]
+      test: ["CMD", "curl", "-sf", "http://localhost:8371/health"]
       interval: 30s
       timeout: 5s
       start_period: 15s

@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog" Version="4.2.0" />
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="9.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+    <PackageReference Include="Spectre.Console" Version="0.49.1" />
+    <PackageReference Include="Spectre.Console.Cli" Version="0.49.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenVEPA.Agents.Runtime\OpenVEPA.Agents.Runtime.csproj" />
+    <ProjectReference Include="..\OpenVEPA.Core\OpenVEPA.Core.csproj" />
+    <ProjectReference Include="..\OpenVEPA.Providers\OpenVEPA.Providers.csproj" />
+    <ProjectReference Include="..\OpenVEPA.Scheduler\OpenVEPA.Scheduler.csproj" />
+    <ProjectReference Include="..\OpenVEPA.Server\OpenVEPA.Server.csproj" />
+    <ProjectReference Include="..\OpenVEPA.Skills.Runtime\OpenVEPA.Skills.Runtime.csproj" />
+    <ProjectReference Include="..\OpenVEPA.Storage\OpenVEPA.Storage.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

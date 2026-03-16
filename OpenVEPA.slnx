@@ -1,0 +1,23 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/OpenVEPA.Agents.Runtime/OpenVEPA.Agents.Runtime.csproj" />
+    <Project Path="src/OpenVEPA.Channels.Discord/OpenVEPA.Channels.Discord.csproj" />
+    <Project Path="src/OpenVEPA.Channels.Email/OpenVEPA.Channels.Email.csproj" />
+    <Project Path="src/OpenVEPA.Channels.Telegram/OpenVEPA.Channels.Telegram.csproj" />
+    <Project Path="src/OpenVEPA.Cli/OpenVEPA.Cli.csproj" />
+    <Project Path="src/OpenVEPA.Core/OpenVEPA.Core.csproj" />
+    <Project Path="src/OpenVEPA.Hub.Client/OpenVEPA.Hub.Client.csproj" />
+    <Project Path="src/OpenVEPA.Providers/OpenVEPA.Providers.csproj" />
+    <Project Path="src/OpenVEPA.Scheduler/OpenVEPA.Scheduler.csproj" />
+    <Project Path="src/OpenVEPA.Server/OpenVEPA.Server.csproj" />
+    <Project Path="src/OpenVEPA.Skills.Runtime/OpenVEPA.Skills.Runtime.csproj" />
+    <Project Path="src/OpenVEPA.Storage/OpenVEPA.Storage.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OpenVEPA.Cli.Tests/OpenVEPA.Cli.Tests.csproj" />
+    <Project Path="tests/OpenVEPA.Core.Tests/OpenVEPA.Core.Tests.csproj" />
+    <Project Path="tests/OpenVEPA.Server.Tests/OpenVEPA.Server.Tests.csproj" />
+    <Project Path="tests/OpenVEPA.Skills.Runtime.Tests/OpenVEPA.Skills.Runtime.Tests.csproj" />
+    <Project Path="tests/OpenVEPA.Storage.Tests/OpenVEPA.Storage.Tests.csproj" />
+  </Folder>
+</Solution>

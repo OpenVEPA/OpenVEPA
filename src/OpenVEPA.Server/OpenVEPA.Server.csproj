@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenVEPA.Core\OpenVEPA.Core.csproj" />
+    <ProjectReference Include="..\OpenVEPA.Skills.Runtime\OpenVEPA.Skills.Runtime.csproj" />
+    <ProjectReference Include="..\OpenVEPA.Agents.Runtime\OpenVEPA.Agents.Runtime.csproj" />
+    <ProjectReference Include="..\OpenVEPA.Providers\OpenVEPA.Providers.csproj" />
+    <ProjectReference Include="..\OpenVEPA.Storage\OpenVEPA.Storage.csproj" />
+    <ProjectReference Include="..\OpenVEPA.Scheduler\OpenVEPA.Scheduler.csproj" />
+  </ItemGroup>
+</Project>
