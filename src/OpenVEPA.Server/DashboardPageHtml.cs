@@ -965,6 +965,60 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
     flex-direction:column;
     gap:1rem;
 }
+.provider-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+    gap:.85rem;
+}
+.provider-card{
+    background:rgba(15,52,96,.42);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:1.1rem;
+    position:relative;
+}
+.provider-card.provider-default{
+    border-color:var(--accent);
+    box-shadow:0 0 0 1px var(--accent);
+}
+.provider-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:.75rem;
+}
+.provider-name{
+    font-size:1.05rem;
+    font-weight:700;
+    text-transform:capitalize;
+}
+.provider-meta{
+    display:flex;
+    flex-direction:column;
+    gap:.35rem;
+    margin-bottom:.75rem;
+}
+.provider-meta-row{
+    display:flex;
+    gap:.5rem;
+    align-items:baseline;
+}
+.provider-meta-label{
+    color:var(--text-secondary);
+    font-size:.84rem;
+    min-width:60px;
+}
+.provider-meta-value{
+    font-size:.92rem;
+    font-weight:600;
+    word-break:break-all;
+}
+.provider-actions{
+    display:flex;
+    gap:.5rem;
+    flex-wrap:wrap;
+    margin-top:.5rem;
+}
 .catalog-card{
     padding:1.15rem 1.25rem;
 }
@@ -2682,8 +2736,10 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         llm:{
             config:null,
             usage:null,
-            draft:null,
-            isEditing:false,
+            editingProvider:null,
+            addingProvider:false,
+            editDraft:null,
+            addDraft:null,
             isLoading:false,
             isSaving:false,
             message:'',
@@ -3100,15 +3156,6 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         }
     }
 
-    function buildLlmDraft(){
-        var config = dashboardState.llm.config || {};
-        return {
-            provider:config.provider || llmProviders[0],
-            modelId:config.modelId || '',
-            endpoint:config.endpoint || ''
-        };
-    }
-
     function loadLlmSettings(force){
         var state = dashboardState.llm;
         if(state.isLoading){
@@ -3137,13 +3184,24 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         });
     }
 
-    function renderLlmProviderOptions(selectedProvider){
+    function renderLlmProviderOptions(selectedProvider, excludeNames){
         var html = '';
         for(var i=0;i<llmProviders.length;i++){
             var provider = llmProviders[i];
-            html += `<option value='${escapeHtml(provider)}'${provider === selectedProvider ? ' selected' : ''}>${escapeHtml(provider)}</option>`;
+            if(excludeNames && excludeNames.indexOf(provider) >= 0){
+                continue;
+            }
+            html += '<option value=\\''+escapeHtml(provider)+'\\''+(provider === selectedProvider ? ' selected' : '')+'>'+escapeHtml(provider)+'</option>';
         }
         return html;
+    }
+
+    function getConfiguredProviderNames(){
+        var config = dashboardState.llm.config;
+        if(!config || !config.providers){
+            return [];
+        }
+        return config.providers.map(function(p){ return p.name; });
     }
 
     function renderLlmConfigCard(){
@@ -3161,62 +3219,99 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         }
 
         var banner = renderStatusBanner(state.error, 'error') || renderStatusBanner(state.message, 'success');
-        if(state.isEditing){
-            var draft = state.draft || buildLlmDraft();
-            return `
-<div class='section-heading'>
-    <div>
-        <h2>Edit configuration</h2>
-        <p>Changes are written to appsettings.json. API keys remain hidden from the WebUI.</p>
-    </div>
-</div>
-${banner}
-<div class='field'>
-    <span>Provider</span>
-    <select id='llmProviderSelect' class='control' ${state.isSaving ? 'disabled' : ''}>${renderLlmProviderOptions(draft.provider)}</select>
-</div>
-<div class='field'>
-    <span>Model</span>
-    <input id='llmModelInput' class='control' type='text' value='${escapeHtml(draft.modelId)}' placeholder='gpt-4o' ${state.isSaving ? 'disabled' : ''}>
-</div>
-<div class='field'>
-    <span>Endpoint</span>
-    <input id='llmEndpointInput' class='control' type='url' value='${escapeHtml(draft.endpoint)}' placeholder='https://api.example.com/v1' ${state.isSaving ? 'disabled' : ''}>
-    <div class='field-hint'>Use an absolute URL for the selected provider endpoint.</div>
-</div>
-<div class='settings-actions'>
-    <button type='button' class='secondary-button' id='llmCancelButton' ${state.isSaving ? 'disabled' : ''}>Cancel</button>
-    <button type='button' class='primary-button' id='llmSaveButton' ${state.isSaving ? 'disabled' : ''}>${state.isSaving ? 'Saving…' : 'Save settings'}</button>
-</div>`;
+        var providers = config.providers || [];
+        var defaultProvider = config.defaultProvider || 'unknown';
+        var html = '';
+
+        html += '<div class=\\'section-heading\\'>';
+        html += '<div>';
+        html += '<h2>Configured providers</h2>';
+        html += '<p>All configured LLM providers. The default provider is highlighted.</p>';
+        html += '</div>';
+        html += '<div class=\\'settings-actions\\'>';
+        html += '<button type=\\'button\\' class=\\'secondary-button\\' id=\\'llmRefreshButton\\'' + (state.isSaving ? ' disabled' : '') + '>Refresh</button>';
+        html += '<button type=\\'button\\' class=\\'primary-button\\' id=\\'llmAddProviderButton\\'' + (state.isSaving ? ' disabled' : '') + '>Add Provider</button>';
+        html += '</div>';
+        html += '</div>';
+        html += banner;
+
+        if(state.addingProvider){
+            var draft = state.addDraft || {name:llmProviders[0],modelId:'',endpoint:''};
+            html += '<div class=\\'provider-card\\' style=\\'border-color:var(--accent)\\'>';
+            html += '<div class=\\'section-heading\\'><div><h2>Add new provider</h2></div></div>';
+            html += '<div class=\\'field\\'>';
+            html += '<span>Provider</span>';
+            html += '<select id=\\'llmNewProviderSelect\\' class=\\'control\\'' + (state.isSaving ? ' disabled' : '') + '>' + renderLlmProviderOptions(draft.name, getConfiguredProviderNames()) + '</select>';
+            html += '</div>';
+            html += '<div class=\\'field\\'>';
+            html += '<span>Model</span>';
+            html += '<input id=\\'llmNewModelInput\\' class=\\'control\\' type=\\'text\\' value=\\''+escapeHtml(draft.modelId)+'\\' placeholder=\\'model-id\\'' + (state.isSaving ? ' disabled' : '') + '>';
+            html += '</div>';
+            html += '<div class=\\'field\\'>';
+            html += '<span>Endpoint</span>';
+            html += '<input id=\\'llmNewEndpointInput\\' class=\\'control\\' type=\\'url\\' value=\\''+escapeHtml(draft.endpoint)+'\\' placeholder=\\'https://api.example.com/v1\\'' + (state.isSaving ? ' disabled' : '') + '>';
+            html += '</div>';
+            html += '<div class=\\'provider-actions\\'>';
+            html += '<button type=\\'button\\' class=\\'secondary-button\\' id=\\'llmCancelAddButton\\'' + (state.isSaving ? ' disabled' : '') + '>Cancel</button>';
+            html += '<button type=\\'button\\' class=\\'primary-button\\' id=\\'llmSaveAddButton\\'' + (state.isSaving ? ' disabled' : '') + '>' + (state.isSaving ? 'Saving…' : 'Add') + '</button>';
+            html += '</div>';
+            html += '</div>';
         }
 
-        return `
-<div class='section-heading'>
-    <div>
-        <h2>Current configuration</h2>
-        <p>Provider defaults are read from the active runtime configuration.</p>
-    </div>
-    <div class='settings-actions'>
-        <button type='button' class='secondary-button' id='llmRefreshButton'>Refresh</button>
-        <button type='button' class='primary-button' id='llmEditButton'>Edit</button>
-    </div>
-</div>
-${banner}
-<div class='definition-grid'>
-    <div class='definition-item'>
-        <div class='definition-label'>Provider</div>
-        <div class='definition-value'>${escapeHtml(config.provider || 'unknown')}</div>
-    </div>
-    <div class='definition-item'>
-        <div class='definition-label'>Model</div>
-        <div class='definition-value'>${escapeHtml(config.modelId || 'unknown')}</div>
-    </div>
-    <div class='definition-item'>
-        <div class='definition-label'>Endpoint</div>
-        <div class='definition-value'>${escapeHtml(config.endpoint || 'Not configured')}</div>
-    </div>
-</div>
-<p class='helper-text'>Only non-sensitive configuration values are displayed here. Save responses include a restart notice when runtime services need to be reloaded.</p>`;
+        html += '<div class=\\'provider-grid\\'>';
+        for(var i=0;i<providers.length;i++){
+            var p = providers[i];
+            var isDefault = p.name === defaultProvider;
+            var isEditing = state.editingProvider === p.name;
+
+            html += '<div class=\\'provider-card' + (isDefault ? ' provider-default' : '') + '\\'>';
+            html += '<div class=\\'provider-header\\'>';
+            html += '<span class=\\'provider-name\\'>' + escapeHtml(p.name) + '</span>';
+            if(isDefault){
+                html += '<span class=\\'pill\\'>Default</span>';
+            }
+            html += '</div>';
+
+            if(isEditing){
+                var draft = state.editDraft || {modelId:p.modelId||'',endpoint:p.endpoint||''};
+                html += '<div class=\\'field\\'>';
+                html += '<span>Model</span>';
+                html += '<input class=\\'control llm-edit-model\\' type=\\'text\\' value=\\''+escapeHtml(draft.modelId)+'\\' data-provider=\\''+escapeHtml(p.name)+'\\'' + (state.isSaving ? ' disabled' : '') + '>';
+                html += '</div>';
+                html += '<div class=\\'field\\'>';
+                html += '<span>Endpoint</span>';
+                html += '<input class=\\'control llm-edit-endpoint\\' type=\\'url\\' value=\\''+escapeHtml(draft.endpoint)+'\\' data-provider=\\''+escapeHtml(p.name)+'\\'' + (state.isSaving ? ' disabled' : '') + '>';
+                html += '</div>';
+                html += '<div class=\\'provider-actions\\'>';
+                html += '<button type=\\'button\\' class=\\'secondary-button llm-cancel-edit\\'' + (state.isSaving ? ' disabled' : '') + '>Cancel</button>';
+                html += '<button type=\\'button\\' class=\\'primary-button llm-save-edit\\' data-provider=\\''+escapeHtml(p.name)+'\\'' + (state.isSaving ? ' disabled' : '') + '>' + (state.isSaving ? 'Saving…' : 'Save') + '</button>';
+                html += '</div>';
+            } else {
+                html += '<div class=\\'provider-meta\\'>';
+                html += '<div class=\\'provider-meta-row\\'><span class=\\'provider-meta-label\\'>Model</span><span class=\\'provider-meta-value\\'>' + escapeHtml(p.modelId || 'unknown') + '</span></div>';
+                html += '<div class=\\'provider-meta-row\\'><span class=\\'provider-meta-label\\'>Endpoint</span><span class=\\'provider-meta-value\\'>' + escapeHtml(p.endpoint || 'Not configured') + '</span></div>';
+                html += '</div>';
+                html += '<div class=\\'provider-actions\\'>';
+                if(!isDefault){
+                    html += '<button type=\\'button\\' class=\\'secondary-button llm-set-default\\' data-provider=\\''+escapeHtml(p.name)+'\\'' + (state.isSaving ? ' disabled' : '') + '>Set as default</button>';
+                }
+                html += '<button type=\\'button\\' class=\\'secondary-button llm-edit-provider\\' data-provider=\\''+escapeHtml(p.name)+'\\'' + (state.isSaving ? ' disabled' : '') + '>Edit</button>';
+                if(providers.length > 1){
+                    html += '<button type=\\'button\\' class=\\'secondary-button llm-remove-provider\\' data-provider=\\''+escapeHtml(p.name)+'\\'' + (state.isSaving ? ' disabled' : '') + '>Remove</button>';
+                }
+                html += '</div>';
+            }
+            html += '</div>';
+        }
+        html += '</div>';
+
+        if(providers.length === 0){
+            html += '<p class=\\'helper-text\\'>No providers configured. Use the Add Provider button to get started.</p>';
+        } else {
+            html += '<p class=\\'helper-text\\'>Only non-sensitive configuration values are displayed. API keys remain hidden from the WebUI.</p>';
+        }
+
+        return html;
     }
 
     function renderLlmUsageCard(){
@@ -3286,81 +3381,185 @@ ${banner}
         if(usageRefreshButton){
             usageRefreshButton.onclick = function(){ loadLlmSettings(true); };
         }
-        var editButton = document.getElementById('llmEditButton');
-        if(editButton){
-            editButton.onclick = function(){
-                dashboardState.llm.draft = buildLlmDraft();
-                dashboardState.llm.isEditing = true;
+        var addProviderButton = document.getElementById('llmAddProviderButton');
+        if(addProviderButton){
+            addProviderButton.onclick = function(){
+                dashboardState.llm.addingProvider = true;
+                dashboardState.llm.addDraft = {name:llmProviders[0],modelId:'',endpoint:''};
                 dashboardState.llm.error = '';
                 renderLlmSettingsPanels();
             };
         }
-        var cancelButton = document.getElementById('llmCancelButton');
-        if(cancelButton){
-            cancelButton.onclick = function(){
-                dashboardState.llm.isEditing = false;
-                dashboardState.llm.draft = null;
+        var cancelAddButton = document.getElementById('llmCancelAddButton');
+        if(cancelAddButton){
+            cancelAddButton.onclick = function(){
+                dashboardState.llm.addingProvider = false;
+                dashboardState.llm.addDraft = null;
                 dashboardState.llm.error = '';
                 renderLlmSettingsPanels();
             };
         }
-        var saveButton = document.getElementById('llmSaveButton');
-        if(saveButton){
-            saveButton.onclick = saveLlmSettings;
+        var saveAddButton = document.getElementById('llmSaveAddButton');
+        if(saveAddButton){
+            saveAddButton.onclick = saveNewProvider;
+        }
+
+        var editButtons = document.querySelectorAll('.llm-edit-provider');
+        for(var i=0;i<editButtons.length;i++){
+            editButtons[i].onclick = function(){
+                var providerName = this.getAttribute('data-provider');
+                var config = dashboardState.llm.config;
+                var existing = (config && config.providers || []).filter(function(p){ return p.name === providerName; })[0];
+                dashboardState.llm.editingProvider = providerName;
+                dashboardState.llm.editDraft = {modelId:(existing && existing.modelId)||'',endpoint:(existing && existing.endpoint)||''};
+                dashboardState.llm.error = '';
+                renderLlmSettingsPanels();
+            };
+        }
+        var cancelEditButtons = document.querySelectorAll('.llm-cancel-edit');
+        for(var ci=0;ci<cancelEditButtons.length;ci++){
+            cancelEditButtons[ci].onclick = function(){
+                dashboardState.llm.editingProvider = null;
+                dashboardState.llm.editDraft = null;
+                dashboardState.llm.error = '';
+                renderLlmSettingsPanels();
+            };
+        }
+        var saveEditButtons = document.querySelectorAll('.llm-save-edit');
+        for(var si=0;si<saveEditButtons.length;si++){
+            saveEditButtons[si].onclick = function(){
+                saveEditedProvider(this.getAttribute('data-provider'));
+            };
+        }
+        var setDefaultButtons = document.querySelectorAll('.llm-set-default');
+        for(var di=0;di<setDefaultButtons.length;di++){
+            setDefaultButtons[di].onclick = function(){
+                setDefaultProvider(this.getAttribute('data-provider'));
+            };
+        }
+        var removeButtons = document.querySelectorAll('.llm-remove-provider');
+        for(var ri=0;ri<removeButtons.length;ri++){
+            removeButtons[ri].onclick = function(){
+                removeProvider(this.getAttribute('data-provider'));
+            };
         }
 
         var retryButtons = document.querySelectorAll('[data-llm-action="refresh"]');
-        for(var i=0;i<retryButtons.length;i++){
-            retryButtons[i].onclick = function(){ loadLlmSettings(true); };
+        for(var ti=0;ti<retryButtons.length;ti++){
+            retryButtons[ti].onclick = function(){ loadLlmSettings(true); };
         }
     }
 
-    function saveLlmSettings(){
-        var state = dashboardState.llm;
-        if(state.isSaving){
-            return;
-        }
-
-        var providerSelect = document.getElementById('llmProviderSelect');
-        var modelInput = document.getElementById('llmModelInput');
-        var endpointInput = document.getElementById('llmEndpointInput');
-        if(!providerSelect || !modelInput || !endpointInput){
-            return;
-        }
-
-        var payload = {
-            provider:providerSelect.value,
-            modelId:modelInput.value.trim(),
-            endpoint:endpointInput.value.trim()
+    function buildFullPayload(defaultProvider, providers){
+        return {
+            defaultProvider:defaultProvider,
+            providers:providers.map(function(p){
+                return {name:p.name,modelId:p.modelId,endpoint:p.endpoint};
+            })
         };
+    }
 
-        if(!payload.provider || !payload.modelId || !payload.endpoint){
-            state.error = 'Provider, model, and endpoint are required.';
-            renderLlmSettingsPanels();
-            return;
-        }
-
+    function submitLlmConfig(payload){
+        var state = dashboardState.llm;
         state.isSaving = true;
         state.error = '';
         state.message = '';
         renderLlmSettingsPanels();
 
-        apiRequest('/api/system/llm-config', {
+        return apiRequest('/api/system/llm-config', {
             method:'PUT',
             body:JSON.stringify(payload)
         }).then(function(result){
-            state.config = result && result.configuration ? result.configuration : payload;
+            state.config = result && result.configuration ? result.configuration : state.config;
             state.message = result && result.message
                 ? result.message
                 : 'LLM settings saved successfully.';
-            state.isEditing = false;
-            state.draft = null;
+            state.editingProvider = null;
+            state.editDraft = null;
+            state.addingProvider = false;
+            state.addDraft = null;
         }).catch(function(error){
             state.error = error.message;
         }).finally(function(){
             state.isSaving = false;
             renderLlmSettingsPanels();
         });
+    }
+
+    function saveNewProvider(){
+        var state = dashboardState.llm;
+        var nameSelect = document.getElementById('llmNewProviderSelect');
+        var modelInput = document.getElementById('llmNewModelInput');
+        var endpointInput = document.getElementById('llmNewEndpointInput');
+        if(!nameSelect || !modelInput || !endpointInput){
+            return;
+        }
+
+        var name = nameSelect.value;
+        var modelId = modelInput.value.trim();
+        var endpoint = endpointInput.value.trim();
+        if(!name || !modelId || !endpoint){
+            state.error = 'Provider, model, and endpoint are required.';
+            renderLlmSettingsPanels();
+            return;
+        }
+
+        var config = state.config || {defaultProvider:'unknown',providers:[]};
+        var providers = (config.providers || []).slice();
+        providers.push({name:name,modelId:modelId,endpoint:endpoint});
+        var payload = buildFullPayload(config.defaultProvider, providers);
+        submitLlmConfig(payload);
+    }
+
+    function saveEditedProvider(providerName){
+        var state = dashboardState.llm;
+        var modelInput = document.querySelector('.llm-edit-model[data-provider="'+providerName+'"]');
+        var endpointInput = document.querySelector('.llm-edit-endpoint[data-provider="'+providerName+'"]');
+        if(!modelInput || !endpointInput){
+            return;
+        }
+
+        var modelId = modelInput.value.trim();
+        var endpoint = endpointInput.value.trim();
+        if(!modelId || !endpoint){
+            state.error = 'Model and endpoint are required.';
+            renderLlmSettingsPanels();
+            return;
+        }
+
+        var config = state.config || {defaultProvider:'unknown',providers:[]};
+        var providers = (config.providers || []).map(function(p){
+            if(p.name === providerName){
+                return {name:p.name,modelId:modelId,endpoint:endpoint};
+            }
+            return p;
+        });
+        var payload = buildFullPayload(config.defaultProvider, providers);
+        submitLlmConfig(payload);
+    }
+
+    function setDefaultProvider(providerName){
+        var state = dashboardState.llm;
+        var config = state.config || {defaultProvider:'unknown',providers:[]};
+        var payload = buildFullPayload(providerName, config.providers || []);
+        submitLlmConfig(payload);
+    }
+
+    function removeProvider(providerName){
+        var state = dashboardState.llm;
+        var config = state.config || {defaultProvider:'unknown',providers:[]};
+        var providers = (config.providers || []).filter(function(p){ return p.name !== providerName; });
+        if(providers.length === 0){
+            state.error = 'Cannot remove the last provider.';
+            renderLlmSettingsPanels();
+            return;
+        }
+        var defaultProv = config.defaultProvider;
+        if(defaultProv === providerName){
+            defaultProv = providers[0].name;
+        }
+        var payload = buildFullPayload(defaultProv, providers);
+        submitLlmConfig(payload);
     }
 
     // Agents page.

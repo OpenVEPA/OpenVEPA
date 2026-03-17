@@ -22,11 +22,36 @@ internal static class SystemApiExtensions
         WriteIndented = true,
     };
 
-    private static readonly HashSet<string> OpenAiCompatibleProviders =
+    /// <summary>Maps provider names (lowercase) to their configuration section names.</summary>
+    private static readonly Dictionary<string, string> KnownProviderSections =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            "openai", "groq", "together", "perplexity", "azure",
+            ["ollama"] = "Ollama",
+            ["openai"] = "OpenAi",
+            ["google"] = "Google",
+            ["anthropic"] = "Anthropic",
+            ["mistral"] = "Mistral",
+            ["groq"] = "Groq",
+            ["azure"] = "Azure",
+            ["cohere"] = "Cohere",
+            ["together"] = "Together",
+            ["perplexity"] = "Perplexity",
         };
+
+    /// <summary>Ordered list of known provider section names and their canonical provider keys.</summary>
+    private static readonly (string SectionName, string ProviderName)[] KnownProviderMappings =
+    [
+        ("Ollama", "ollama"),
+        ("OpenAi", "openai"),
+        ("Google", "google"),
+        ("Anthropic", "anthropic"),
+        ("Mistral", "mistral"),
+        ("Groq", "groq"),
+        ("Azure", "azure"),
+        ("Cohere", "cohere"),
+        ("Together", "together"),
+        ("Perplexity", "perplexity"),
+    ];
 
     /// <summary>
     /// Maps authenticated REST endpoints under <c>/api/system</c>.
@@ -47,20 +72,20 @@ internal static class SystemApiExtensions
         {
             var sessions = await sessionStore.ListSessionsAsync(ct).ConfigureAwait(false);
             var activeSessionsCount = sessions.Count(static session => session.Status == SessionStatus.Active);
-            var llmConfiguration = GetSafeLlmConfiguration(configuration);
+            var defaultConfig = GetDefaultProviderConfiguration(configuration);
 
             return Results.Ok(new SystemStatusResponse(
                 Version: GetApplicationVersion(),
                 Uptime: GetUptime(),
-                Provider: llmConfiguration.Provider,
-                Model: llmConfiguration.ModelId,
+                Provider: defaultConfig.Provider,
+                Model: defaultConfig.ModelId,
                 SetupComplete: setupService.IsSetupComplete,
                 DatabasePath: ResolveDatabasePath(setupService.ConfigPath),
                 ActiveSessionsCount: activeSessionsCount));
         }).RequireAuthorization();
 
         system.MapGet("/llm-config", (IConfiguration configuration) =>
-            Results.Ok(GetSafeLlmConfiguration(configuration))).RequireAuthorization();
+            Results.Ok(GetMultiProviderLlmConfiguration(configuration))).RequireAuthorization();
 
         system.MapPut("/llm-config", async (
             UpdateLlmConfigRequest? request,
@@ -73,32 +98,54 @@ internal static class SystemApiExtensions
                 return Results.BadRequest(new { error = "Request body is required." });
             }
 
-            var provider = NormalizeProvider(request.Provider);
-            if (provider is null)
+            var defaultProvider = NormalizeProvider(request.DefaultProvider);
+            if (defaultProvider is null)
             {
-                return Results.BadRequest(new { error = "Provider is required." });
+                return Results.BadRequest(new { error = "DefaultProvider is required." });
             }
 
-            var modelId = NormalizeModelId(request.ModelId);
-            if (modelId is null)
+            if (request.Providers is null || request.Providers.Count == 0)
             {
-                return Results.BadRequest(new { error = "ModelId is required." });
+                return Results.BadRequest(new { error = "At least one provider configuration is required." });
             }
 
-            var endpoint = NormalizeEndpoint(request.Endpoint);
-            if (endpoint is null)
+            var validated = new List<(string Name, string ModelId, string Endpoint)>(request.Providers.Count);
+            foreach (var entry in request.Providers)
             {
-                return Results.BadRequest(new { error = "Endpoint is required." });
+                var name = NormalizeProvider(entry.Name);
+                if (name is null)
+                {
+                    return Results.BadRequest(new { error = "Each provider must have a name." });
+                }
+
+                var modelId = NormalizeModelId(entry.ModelId);
+                if (modelId is null)
+                {
+                    return Results.BadRequest(new { error = $"ModelId is required for provider '{name}'." });
+                }
+
+                var endpoint = NormalizeEndpoint(entry.Endpoint);
+                if (endpoint is null)
+                {
+                    return Results.BadRequest(new { error = $"Endpoint is required for provider '{name}'." });
+                }
+
+                if (!Uri.TryCreate(endpoint, UriKind.Absolute, out _))
+                {
+                    return Results.BadRequest(new { error = $"Endpoint for provider '{name}' must be a valid absolute URL." });
+                }
+
+                validated.Add((name, modelId, endpoint));
             }
 
-            if (!Uri.TryCreate(endpoint, UriKind.Absolute, out _))
+            if (!validated.Exists(p => string.Equals(p.Name, defaultProvider, StringComparison.OrdinalIgnoreCase)))
             {
-                return Results.BadRequest(new { error = "Endpoint must be a valid absolute URL." });
+                return Results.BadRequest(new { error = $"DefaultProvider '{defaultProvider}' must be included in the providers list." });
             }
 
             try
             {
-                await WriteLlmConfigurationAsync(setupService.ConfigPath, provider, modelId, endpoint, ct)
+                await WriteMultiProviderConfigurationAsync(setupService.ConfigPath, defaultProvider, validated, ct)
                     .ConfigureAwait(false);
             }
             catch (IOException ex)
@@ -133,7 +180,7 @@ internal static class SystemApiExtensions
                 configurationRoot.Reload();
             }
 
-            var updatedConfiguration = GetSafeLlmConfiguration(configuration);
+            var updatedConfiguration = GetMultiProviderLlmConfiguration(configuration);
             return Results.Ok(new UpdateLlmConfigResponse(
                 Updated: true,
                 RequiresRestart: true,
@@ -188,7 +235,7 @@ internal static class SystemApiExtensions
         return app;
     }
 
-    private static LlmConfigurationResponse GetSafeLlmConfiguration(IConfiguration configuration)
+    private static LlmConfigurationResponse GetDefaultProviderConfiguration(IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
@@ -207,11 +254,43 @@ internal static class SystemApiExtensions
         return new LlmConfigurationResponse(provider, modelId, endpoint);
     }
 
-    private static async Task WriteLlmConfigurationAsync(
+    private static LlmMultiProviderResponse GetMultiProviderLlmConfiguration(IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        var defaultProvider = NormalizeProvider(configuration["Providers:DefaultProvider"]) ?? "unknown";
+        var providers = new List<LlmProviderEntry>();
+
+        foreach (var (sectionName, providerName) in KnownProviderMappings)
+        {
+            var section = configuration.GetSection($"Providers:{sectionName}");
+            if (!section.Exists())
+            {
+                continue;
+            }
+
+            var modelId = section["ModelId"] ?? section["Model"];
+            if (string.IsNullOrWhiteSpace(modelId))
+            {
+                continue;
+            }
+
+            var endpoint = section["Endpoint"];
+            if (string.IsNullOrWhiteSpace(endpoint))
+            {
+                endpoint = ModelListProxy.GetDefaultEndpoint(providerName);
+            }
+
+            providers.Add(new LlmProviderEntry(providerName, modelId, endpoint));
+        }
+
+        return new LlmMultiProviderResponse(defaultProvider, providers);
+    }
+
+    private static async Task WriteMultiProviderConfigurationAsync(
         string configPath,
-        string provider,
-        string modelId,
-        string endpoint,
+        string defaultProvider,
+        List<(string Name, string ModelId, string Endpoint)> providers,
         CancellationToken ct)
     {
         var directory = Path.GetDirectoryName(configPath);
@@ -221,13 +300,16 @@ internal static class SystemApiExtensions
         }
 
         JsonObject root = await LoadConfigurationRootAsync(configPath, ct).ConfigureAwait(false);
-        JsonObject providers = EnsureChildObject(root, "Providers");
-        providers["DefaultProvider"] = provider;
+        JsonObject providersSection = EnsureChildObject(root, "Providers");
+        providersSection["DefaultProvider"] = defaultProvider;
 
-        var sectionName = GetProviderSectionName(provider);
-        JsonObject providerSection = EnsureChildObject(providers, sectionName);
-        providerSection["ModelId"] = modelId;
-        providerSection["Endpoint"] = endpoint;
+        foreach (var (name, modelId, endpoint) in providers)
+        {
+            var sectionName = GetProviderSectionName(name);
+            JsonObject providerSection = EnsureChildObject(providersSection, sectionName);
+            providerSection["ModelId"] = modelId;
+            providerSection["Endpoint"] = endpoint;
+        }
 
         var json = root.ToJsonString(JsonOptions);
         await File.WriteAllTextAsync(configPath, json, ct).ConfigureAwait(false);
@@ -287,14 +369,9 @@ internal static class SystemApiExtensions
 
     private static string GetProviderSectionName(string provider)
     {
-        if (string.Equals(provider, "ollama", StringComparison.OrdinalIgnoreCase))
+        if (KnownProviderSections.TryGetValue(provider, out var sectionName))
         {
-            return "Ollama";
-        }
-
-        if (OpenAiCompatibleProviders.Contains(provider))
-        {
-            return "OpenAi";
+            return sectionName;
         }
 
         return string.IsNullOrEmpty(provider)
@@ -312,14 +389,22 @@ internal static class SystemApiExtensions
         string.IsNullOrWhiteSpace(endpoint) ? null : endpoint.Trim().TrimEnd('/');
 }
 
-/// <summary>Represents the current safe LLM configuration.</summary>
+/// <summary>Represents the default provider's safe LLM configuration (used by status endpoint).</summary>
 internal sealed record LlmConfigurationResponse(string Provider, string ModelId, string? Endpoint);
 
-/// <summary>Represents a request to update LLM runtime configuration.</summary>
-internal sealed record UpdateLlmConfigRequest
+/// <summary>Represents a single provider entry in the multi-provider response.</summary>
+internal sealed record LlmProviderEntry(string Name, string ModelId, string? Endpoint);
+
+/// <summary>Represents the multi-provider LLM configuration response.</summary>
+internal sealed record LlmMultiProviderResponse(
+    string DefaultProvider,
+    IReadOnlyList<LlmProviderEntry> Providers);
+
+/// <summary>Represents a single provider's input in an update request.</summary>
+internal sealed record ProviderConfigInput
 {
-    /// <summary>Gets the provider key.</summary>
-    public string? Provider { get; init; }
+    /// <summary>Gets the provider name.</summary>
+    public string? Name { get; init; }
 
     /// <summary>Gets the model identifier.</summary>
     public string? ModelId { get; init; }
@@ -328,12 +413,22 @@ internal sealed record UpdateLlmConfigRequest
     public string? Endpoint { get; init; }
 }
 
+/// <summary>Represents a request to update LLM runtime configuration.</summary>
+internal sealed record UpdateLlmConfigRequest
+{
+    /// <summary>Gets the default provider key.</summary>
+    public string? DefaultProvider { get; init; }
+
+    /// <summary>Gets the provider configurations to add or update.</summary>
+    public List<ProviderConfigInput>? Providers { get; init; }
+}
+
 /// <summary>Represents the result of updating LLM configuration.</summary>
 internal sealed record UpdateLlmConfigResponse(
     bool Updated,
     bool RequiresRestart,
     string Message,
-    LlmConfigurationResponse Configuration);
+    LlmMultiProviderResponse Configuration);
 
 /// <summary>Represents the enhanced system status response.</summary>
 internal sealed record SystemStatusResponse(

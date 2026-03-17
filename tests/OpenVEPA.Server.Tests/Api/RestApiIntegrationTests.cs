@@ -231,12 +231,14 @@ public sealed class SystemApiIntegrationTests
         using var response = await host.Client.GetAsync("/api/system/llm-config");
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var configuration = await response.Content.ReadFromJsonAsync<LlmConfigurationResponse>();
+        var configuration = await response.Content.ReadFromJsonAsync<LlmMultiProviderResponse>();
 
         configuration.Should().NotBeNull();
-        configuration!.Provider.Should().Be("ollama");
-        configuration.ModelId.Should().Be("llama3.2");
-        configuration.Endpoint.Should().Be("http://localhost:11434");
+        configuration!.DefaultProvider.Should().Be("ollama");
+        configuration.Providers.Should().ContainSingle();
+        configuration.Providers[0].Name.Should().Be("ollama");
+        configuration.Providers[0].ModelId.Should().Be("llama3.2");
+        configuration.Providers[0].Endpoint.Should().Be("http://localhost:11434");
     }
 
     [Fact]
@@ -249,9 +251,16 @@ public sealed class SystemApiIntegrationTests
             "/api/system/llm-config",
             new
             {
-                provider = "openai",
-                modelId = "gpt-5-mini",
-                endpoint = "https://api.example.test/v1"
+                defaultProvider = "openai",
+                providers = new[]
+                {
+                    new
+                    {
+                        name = "openai",
+                        modelId = "gpt-5-mini",
+                        endpoint = "https://api.example.test/v1",
+                    },
+                },
             });
 
         updateResponse.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -260,17 +269,21 @@ public sealed class SystemApiIntegrationTests
         update.Should().NotBeNull();
         update!.Updated.Should().BeTrue();
         update.RequiresRestart.Should().BeTrue();
-        update.Configuration.Provider.Should().Be("openai");
-        update.Configuration.ModelId.Should().Be("gpt-5-mini");
-        update.Configuration.Endpoint.Should().Be("https://api.example.test/v1");
+        update.Configuration.DefaultProvider.Should().Be("openai");
+        update.Configuration.Providers.Should().Contain(p => p.Name == "openai");
+
+        var openaiEntry = update.Configuration.Providers.First(p => p.Name == "openai");
+        openaiEntry.ModelId.Should().Be("gpt-5-mini");
+        openaiEntry.Endpoint.Should().Be("https://api.example.test/v1");
 
         using var readResponse = await host.Client.GetAsync("/api/system/llm-config");
-        var configuration = await readResponse.Content.ReadFromJsonAsync<LlmConfigurationResponse>();
+        var configuration = await readResponse.Content.ReadFromJsonAsync<LlmMultiProviderResponse>();
 
         configuration.Should().NotBeNull();
-        configuration!.Provider.Should().Be("openai");
-        configuration.ModelId.Should().Be("gpt-5-mini");
-        configuration.Endpoint.Should().Be("https://api.example.test/v1");
+        configuration!.DefaultProvider.Should().Be("openai");
+        configuration.Providers.Should().Contain(p => p.Name == "openai");
+        configuration.Providers.First(p => p.Name == "openai").ModelId.Should().Be("gpt-5-mini");
+        configuration.Providers.First(p => p.Name == "openai").Endpoint.Should().Be("https://api.example.test/v1");
     }
 
     [Fact]
