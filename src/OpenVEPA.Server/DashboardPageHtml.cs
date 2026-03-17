@@ -1131,6 +1131,135 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
     color:var(--accent);
     font-size:.8rem;
 }
+.agent-config-grid{
+    display:grid;
+    gap:1rem;
+}
+.agent-config-form{
+    display:flex;
+    flex-direction:column;
+    gap:1rem;
+}
+.agent-config-form .field-row{
+    display:flex;
+    gap:1rem;
+    flex-wrap:wrap;
+}
+.agent-config-form .field-row>.field{
+    flex:1 1 220px;
+}
+.agent-notice{
+    border-radius:14px;
+    border:1px solid rgba(255,184,108,.28);
+    background:rgba(255,184,108,.08);
+    padding:.75rem 1rem;
+    color:#ffcf88;
+    font-size:.88rem;
+    line-height:1.5;
+}
+.progress-track{
+    width:100%;
+    height:10px;
+    background:rgba(255,255,255,.06);
+    border-radius:999px;
+    overflow:hidden;
+    border:1px solid var(--border);
+}
+.progress-fill{
+    height:100%;
+    border-radius:999px;
+    transition:width .3s ease;
+}
+.progress-fill.is-ok{background:var(--accent)}
+.progress-fill.is-warn{background:#ffb86c}
+.progress-fill.is-danger{background:#ff5555}
+.toggle-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:.75rem 1rem;
+    background:rgba(15,52,96,.42);
+    border:1px solid var(--border);
+    border-radius:14px;
+}
+.toggle-row label{
+    display:flex;
+    flex-direction:column;
+    gap:.15rem;
+}
+.toggle-row label span:first-child{
+    font-weight:600;
+    color:var(--text-primary);
+}
+.toggle-row label span:last-child{
+    font-size:.82rem;
+    color:var(--text-secondary);
+}
+.toggle-switch{
+    position:relative;
+    width:48px;
+    height:26px;
+    flex-shrink:0;
+}
+.toggle-switch input{
+    opacity:0;
+    width:0;
+    height:0;
+    position:absolute;
+}
+.toggle-slider{
+    position:absolute;
+    inset:0;
+    background:rgba(255,255,255,.08);
+    border-radius:999px;
+    border:1px solid var(--border);
+    cursor:pointer;
+    transition:background .2s;
+}
+.toggle-slider::before{
+    content:'';
+    position:absolute;
+    left:3px;
+    top:3px;
+    width:18px;
+    height:18px;
+    border-radius:50%;
+    background:#888;
+    transition:transform .2s,background .2s;
+}
+.toggle-switch input:checked+.toggle-slider{
+    background:rgba(80,250,123,.18);
+    border-color:rgba(80,250,123,.4);
+}
+.toggle-switch input:checked+.toggle-slider::before{
+    transform:translateX(22px);
+    background:var(--accent);
+}
+.orch-settings{
+    margin-bottom:1.5rem;
+}
+.orch-settings .orch-bar{
+    display:flex;
+    gap:1rem;
+    align-items:flex-end;
+    flex-wrap:wrap;
+}
+.orch-settings .orch-bar>.field{
+    flex:0 1 220px;
+}
+.agent-card-badges{
+    display:flex;
+    gap:.4rem;
+    flex-wrap:wrap;
+    align-items:center;
+    margin-top:.35rem;
+}
+.agent-card-actions{
+    display:flex;
+    align-items:center;
+    gap:.5rem;
+    flex-shrink:0;
+}
 .table-shell{
     overflow:auto;
     border:1px solid var(--border);
@@ -1475,6 +1604,9 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
         }
         if(hash === '#/channels' || hash.indexOf('#/channels/') === 0){
             return routeMap['#/channels'];
+        }
+        if(hash === '#/agents' || hash.indexOf('#/agents/') === 0){
+            return routeMap['#/agents'];
         }
         return routeMap[hash] || routeMap['#/home'];
     }
@@ -2757,7 +2889,19 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
             systemPrefs:{displayName:'',tone:'Professional'},
             systemPrefsSaving:false,
             systemPrefsMessage:'',
-            systemPrefsError:''
+            systemPrefsError:'',
+            configDetail:null,
+            configBudget:null,
+            configTab:'overview',
+            configLoading:false,
+            configSaving:false,
+            configError:'',
+            configMessage:'',
+            orchConfig:null,
+            orchLoading:false,
+            orchSaving:false,
+            orchError:'',
+            orchMessage:''
         },
         skills:{
             items:null,
@@ -3563,7 +3707,21 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
     }
 
     // Agents page.
+    function getActiveAgentConfigName(){
+        var hash = window.location.hash;
+        var prefix = '#/agents/';
+        if(hash.indexOf(prefix) === 0){
+            return decodeURIComponent(hash.substring(prefix.length).split('/')[0]);
+        }
+        return '';
+    }
+
     function renderAgentsPage(){
+        var agentName = getActiveAgentConfigName();
+        if(agentName){
+            queuePageInit(function(){ initAgentConfigPage(agentName); });
+            return renderAgentConfigPage(agentName);
+        }
         queuePageInit(initAgentsPage);
         return `
 <!-- Page: Agents -->
@@ -3575,14 +3733,19 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         </div>
         <span class='pill'>Agent catalog</span>
     </header>
+    <div id='orchSettingsSection'></div>
     <div class='catalog-list' id='agentsList'>${renderLoadingPanel('Loading agents\u2026')}</div>
 </section>`;
     }
 
     function initAgentsPage(){
         renderAgentsList();
+        renderOrchestratorSettings();
         if(!dashboardState.agents.items){
             loadAgents(false);
+        }
+        if(!dashboardState.agents.orchConfig){
+            loadOrchestratorConfig();
         }
     }
 
@@ -3783,25 +3946,36 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         for(var i=0;i<state.items.length;i++){
             var summary = state.items[i];
             var expanded = state.expandedName === summary.name;
-            var systemBadge = summary.isSystem ? "<span class='pill' style='background:var(--accent);color:#000;font-size:0.7rem;margin-left:0.5rem;'>System</span>" : '';
+            var systemBadge = summary.isSystem ? " <span class='pill' style='background:var(--accent);color:#000;font-size:0.7rem;'>\uD83D\uDD12 System</span>" : '';
             var displayTitle = summary.isSystem && state.systemPrefs.displayName
                 ? escapeHtml(state.systemPrefs.displayName) + " <span style='opacity:0.5;font-size:0.85em;'>(" + escapeHtml(summary.name) + ")</span>"
                 : escapeHtml(summary.name);
+            var priorityBadge = typeof summary.priority === 'number' ? "<span class='badge is-muted'>Priority " + summary.priority + "</span>" : '';
+            var budgetBadge = summary.hasBudget ? "<span class='badge is-muted'>\uD83D\uDFE1 Budget</span>" : "<span class='badge is-muted'>\uD83D\uDFE2 No budget</span>";
+            var llmBadge = summary.hasLlmOverride ? "<span class='badge is-accent'>\u26A1 Custom LLM</span>" : '';
+            var triggerBadge = summary.triggerCount > 0 ? renderCountBadge(summary.triggerCount, 'trigger') : '';
             html += `
 <article class='card catalog-card'>
-    <button type='button' class='catalog-trigger' data-agent-name='${escapeHtml(summary.name)}' aria-expanded='${expanded ? 'true' : 'false'}'>
-        <div class='catalog-summary'>
+    <div class='catalog-summary'>
+        <button type='button' class='catalog-trigger' data-agent-name='${escapeHtml(summary.name)}' aria-expanded='${expanded ? 'true' : 'false'}' style='flex:1'>
             <div>
                 <h2 class='catalog-title'>${displayTitle}${systemBadge}</h2>
                 <p class='catalog-description'>${escapeHtml(summary.description || 'No description provided.')}</p>
-                <div class='badge-row'>
+                <div class='agent-card-badges'>
                     ${renderAutonomyBadge(summary.autonomyLevel)}
                     ${renderCountBadge(summary.skillCount, 'skill')}
+                    ${priorityBadge}
+                    ${budgetBadge}
+                    ${llmBadge}
+                    ${triggerBadge}
                 </div>
             </div>
-            <span class='expand-icon' aria-hidden='true'>${expanded ? '\u2212' : '+'}</span>
+        </button>
+        <div class='agent-card-actions'>
+            <a href='#/agents/${encodeURIComponent(summary.name)}' class='secondary-button' style='white-space:nowrap;min-height:2.2rem;padding:0 .75rem;font-size:.84rem;'>Configure</a>
+            <span class='expand-icon' aria-hidden='true' style='cursor:pointer' data-agent-name='${escapeHtml(summary.name)}'>${expanded ? '\u2212' : '+'}</span>
         </div>
-    </button>
+    </div>
     ${expanded ? renderAgentDetail(summary, state.detailByName[summary.name], !!state.detailLoading[summary.name], state.detailError[summary.name]) : ''}
 </article>`;
         }
@@ -3849,6 +4023,551 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         if(trigger){
             toggleAgentExpansion(trigger.getAttribute('data-agent-name'));
         }
+    }
+
+    // Agent configuration page (detail/edit view).
+    function renderAgentConfigPage(agentName){
+        return `
+<section class='page-shell'>
+    <header class='page-header'>
+        <div>
+            <h1 id='agentConfigTitle'>Agent Configuration</h1>
+            <p id='agentConfigDesc'>Loading agent details\u2026</p>
+        </div>
+        <a href='#/agents' class='secondary-button'>\u2190 Back to Agents</a>
+    </header>
+    <div id='agentConfigStatus'></div>
+    <div id='agentConfigTabBar'></div>
+    <section class='card settings-card' id='agentConfigCard'>${renderLoadingPanel('Loading agent configuration\u2026')}</section>
+</section>`;
+    }
+
+    function initAgentConfigPage(agentName){
+        var state = dashboardState.agents;
+        state.configDetail = null;
+        state.configBudget = null;
+        state.configTab = 'overview';
+        state.configLoading = false;
+        state.configSaving = false;
+        state.configError = '';
+        state.configMessage = '';
+        loadAgentConfig(agentName);
+    }
+
+    function loadAgentConfig(agentName){
+        var state = dashboardState.agents;
+        state.configLoading = true;
+        state.configError = '';
+        renderAgentConfigCard();
+
+        apiRequest('/api/agents/' + encodeURIComponent(agentName)).then(function(detail){
+            state.configDetail = detail;
+            var titleEl = document.getElementById('agentConfigTitle');
+            var descEl = document.getElementById('agentConfigDesc');
+            if(titleEl) titleEl.textContent = (detail.name || agentName) + ' Configuration';
+            if(descEl) descEl.textContent = detail.description || '';
+        }).catch(function(error){
+            state.configError = error.message;
+        }).finally(function(){
+            state.configLoading = false;
+            renderAgentConfigCard();
+            loadAgentBudget(agentName);
+        });
+    }
+
+    function loadAgentBudget(agentName){
+        var state = dashboardState.agents;
+        apiRequest('/api/agents/' + encodeURIComponent(agentName) + '/budget').then(function(budget){
+            state.configBudget = budget;
+            if(state.configTab === 'budget'){
+                renderAgentConfigCard();
+            }
+        }).catch(function(){
+            state.configBudget = null;
+        });
+    }
+
+    var agentConfigTabs = [
+        {id:'overview', icon:'\uD83D\uDCCB', label:'Overview'},
+        {id:'llm', icon:'\uD83E\uDD16', label:'LLM Config'},
+        {id:'permissions', icon:'\uD83D\uDD10', label:'Permissions'},
+        {id:'budget', icon:'\uD83D\uDCB0', label:'Budget'},
+        {id:'triggers', icon:'\u26A1', label:'Triggers & Restrictions'}
+    ];
+
+    function renderAgentConfigTabBar(){
+        var state = dashboardState.agents;
+        var agentName = getActiveAgentConfigName();
+        var tabs = [];
+        for(var i=0;i<agentConfigTabs.length;i++){
+            var t = agentConfigTabs[i];
+            tabs.push({id:t.id, href:'javascript:void(0)', icon:t.icon, label:t.label});
+        }
+        return renderTabBar(tabs, state.configTab);
+    }
+
+    function renderAgentConfigCard(){
+        var card = document.getElementById('agentConfigCard');
+        var statusHost = document.getElementById('agentConfigStatus');
+        var tabBarHost = document.getElementById('agentConfigTabBar');
+        if(!card) return;
+        var state = dashboardState.agents;
+
+        if(statusHost){
+            var bannerHtml = '';
+            if(state.configError) bannerHtml = renderStatusBanner(state.configError, 'error');
+            else if(state.configMessage) bannerHtml = renderStatusBanner(state.configMessage, 'success');
+            statusHost.innerHTML = bannerHtml;
+        }
+
+        if(state.configLoading && !state.configDetail){
+            if(tabBarHost) tabBarHost.innerHTML = '';
+            card.innerHTML = renderLoadingPanel('Loading agent configuration\u2026');
+            return;
+        }
+        if(!state.configDetail){
+            if(tabBarHost) tabBarHost.innerHTML = '';
+            card.innerHTML = renderSettingsEmptyState('Agent not found', 'Could not load configuration for this agent.');
+            return;
+        }
+
+        if(tabBarHost){
+            tabBarHost.innerHTML = renderAgentConfigTabBar();
+            tabBarHost.onclick = function(e){
+                var tabLink = e.target.closest('.tab');
+                if(tabLink){
+                    e.preventDefault();
+                    var tabId = '';
+                    for(var i=0;i<agentConfigTabs.length;i++){
+                        if(tabLink.textContent.indexOf(agentConfigTabs[i].label) >= 0){
+                            tabId = agentConfigTabs[i].id;
+                            break;
+                        }
+                    }
+                    if(tabId && tabId !== state.configTab){
+                        state.configTab = tabId;
+                        state.configMessage = '';
+                        state.configError = '';
+                        renderAgentConfigCard();
+                    }
+                }
+            };
+        }
+
+        var detail = state.configDetail;
+        var isSystem = !!detail.isSystem;
+        var isSaving = state.configSaving;
+        var disabledAttr = isSaving ? ' disabled' : '';
+        var html = '';
+
+        if(isSystem){
+            html += "<div class='agent-notice'>\uD83D\uDD12 This is a system agent. Name and description cannot be changed.</div>";
+        }
+
+        var tab = state.configTab;
+        if(tab === 'overview'){
+            html += renderAgentOverviewTab(detail, isSystem, disabledAttr);
+        } else if(tab === 'llm'){
+            html += renderAgentLlmTab(detail, disabledAttr);
+        } else if(tab === 'permissions'){
+            html += renderAgentPermissionsTab(detail, disabledAttr);
+        } else if(tab === 'budget'){
+            html += renderAgentBudgetTab(detail, state.configBudget, disabledAttr);
+        } else if(tab === 'triggers'){
+            html += renderAgentTriggersTab(detail, disabledAttr);
+        }
+
+        html += `
+<div class='settings-actions' style='margin-top:1.25rem;'>
+    <button type='button' class='primary-button' id='agentConfigSaveBtn'${disabledAttr}>${isSaving ? 'Saving\u2026' : 'Save Configuration'}</button>
+</div>`;
+
+        card.innerHTML = html;
+
+        var saveBtn = document.getElementById('agentConfigSaveBtn');
+        if(saveBtn){
+            saveBtn.onclick = function(){ saveAgentConfig(detail.name); };
+        }
+        bindAgentConfigInteractions();
+    }
+
+    function renderAgentOverviewTab(detail, isSystem, disabledAttr){
+        var readOnlyAttr = isSystem ? ' disabled' : disabledAttr;
+        return `
+<div class='agent-config-form'>
+    <div class='field-row'>
+        <div class='field'>
+            <span>Name</span>
+            <input type='text' id='acfName' class='control' value='${escapeHtml(detail.name || '')}'${readOnlyAttr} />
+        </div>
+        <div class='field'>
+            <span>Priority</span>
+            <input type='number' id='acfPriority' class='control' value='${detail.priority != null ? detail.priority : 0}' min='0'${disabledAttr} />
+        </div>
+    </div>
+    <div class='field'>
+        <span>Description</span>
+        <textarea id='acfDescription' class='control' rows='3'${readOnlyAttr}>${escapeHtml(detail.description || '')}</textarea>
+    </div>
+    <div class='field'>
+        <span>Autonomy Level</span>
+        <input type='number' id='acfAutonomy' class='control' value='${detail.autonomyLevel != null ? detail.autonomyLevel : 0}' min='0' max='4'${disabledAttr} />
+    </div>
+    <div class='detail-card' style='margin-top:.5rem;'>
+        <h3>Skills</h3>
+        ${renderTokens(detail.skills || [], 'No skills attached to this agent.')}
+    </div>
+</div>`;
+    }
+
+    function renderAgentLlmTab(detail, disabledAttr){
+        var llmConfig = detail.llmConfig || {};
+        var provider = llmConfig.provider || '';
+        var model = llmConfig.model || '';
+        var temperature = llmConfig.temperature != null ? llmConfig.temperature : '';
+        var maxTokens = llmConfig.maxTokens != null ? llmConfig.maxTokens : '';
+
+        var providerOptions = "<option value=''" + (provider === '' ? ' selected' : '') + ">System Default</option>";
+        for(var i=0;i<llmProviders.length;i++){
+            var p = llmProviders[i];
+            providerOptions += "<option value='" + escapeHtml(p) + "'" + (p === provider ? ' selected' : '') + ">" + escapeHtml(p) + "</option>";
+        }
+
+        return `
+<div class='agent-config-form'>
+    <p class='field-hint'>Leave fields blank to use the system default LLM configuration.</p>
+    <div class='field-row'>
+        <div class='field'>
+            <span>Provider</span>
+            <select id='acfLlmProvider' class='control'${disabledAttr}>${providerOptions}</select>
+        </div>
+        <div class='field'>
+            <span>Model</span>
+            <input type='text' id='acfLlmModel' class='control' value='${escapeHtml(model)}' placeholder='e.g. gpt-4o, llama3'${disabledAttr} />
+        </div>
+    </div>
+    <div class='field-row'>
+        <div class='field'>
+            <span>Temperature (0.0 \u2013 2.0)</span>
+            <input type='range' id='acfLlmTemp' class='control' min='0' max='2' step='0.1' value='${temperature !== '' ? temperature : 0.7}' style='padding:.5rem 1rem'${disabledAttr} />
+            <span id='acfLlmTempVal' style='text-align:center;font-weight:600'>${temperature !== '' ? temperature : '0.7'}</span>
+        </div>
+        <div class='field'>
+            <span>Max Tokens</span>
+            <input type='number' id='acfLlmMaxTokens' class='control' value='${maxTokens}' placeholder='Leave blank for default' min='0'${disabledAttr} />
+        </div>
+    </div>
+</div>`;
+    }
+
+    function renderAgentPermissionsTab(detail, disabledAttr){
+        var perms = detail.permissions || {};
+        var items = [
+            {id:'internet', label:'Internet Access', desc:'Allow the agent to make outbound HTTP requests.', value:!!perms.internet},
+            {id:'fileSystem', label:'File System Access', desc:'Allow the agent to read and write files on disk.', value:!!perms.fileSystem},
+            {id:'codeExecution', label:'Code Execution', desc:'Allow the agent to compile and run code.', value:!!perms.codeExecution},
+            {id:'databaseAccess', label:'Database Access', desc:'Allow the agent to query databases directly.', value:!!perms.databaseAccess}
+        ];
+        var html = "<div class='agent-config-form'>";
+        for(var i=0;i<items.length;i++){
+            var item = items[i];
+            html += `
+<div class='toggle-row'>
+    <label for='acfPerm_${item.id}'>
+        <span>${escapeHtml(item.label)}</span>
+        <span>${escapeHtml(item.desc)}</span>
+    </label>
+    <div class='toggle-switch'>
+        <input type='checkbox' id='acfPerm_${item.id}'${item.value ? ' checked' : ''}${disabledAttr} />
+        <span class='toggle-slider'></span>
+    </div>
+</div>`;
+        }
+        html += '</div>';
+        return html;
+    }
+
+    function renderAgentBudgetTab(detail, budget, disabledAttr){
+        var tb = detail.tokenBudget || {};
+        var maxTokens = tb.maxTokensPerPeriod != null ? tb.maxTokensPerPeriod : 0;
+        var period = tb.period || 'Session';
+        var action = tb.actionOnExceeded || 'Stop';
+        var pauseMins = tb.pauseResumeMinutes != null ? tb.pauseResumeMinutes : 5;
+
+        var periodOptions = '';
+        var periods = ['Session','Daily','Monthly'];
+        for(var i=0;i<periods.length;i++){
+            periodOptions += "<option value='" + periods[i] + "'" + (periods[i] === period ? ' selected' : '') + ">" + periods[i] + "</option>";
+        }
+        var actionOptions = '';
+        var actions = ['Stop','Pause & Resume'];
+        for(var i=0;i<actions.length;i++){
+            var actVal = actions[i] === 'Pause & Resume' ? 'PauseResume' : actions[i];
+            actionOptions += "<option value='" + actVal + "'" + (actVal === action ? ' selected' : '') + ">" + actions[i] + "</option>";
+        }
+
+        var showPauseMins = action === 'PauseResume' ? '' : ' style="display:none"';
+
+        var html = `
+<div class='agent-config-form'>
+    <div class='field-row'>
+        <div class='field'>
+            <span>Max Tokens Per Period (0 = unlimited)</span>
+            <input type='number' id='acfBudgetMax' class='control' value='${maxTokens}' min='0'${disabledAttr} />
+        </div>
+        <div class='field'>
+            <span>Period</span>
+            <select id='acfBudgetPeriod' class='control'${disabledAttr}>${periodOptions}</select>
+        </div>
+    </div>
+    <div class='field-row'>
+        <div class='field'>
+            <span>Action On Exceeded</span>
+            <select id='acfBudgetAction' class='control'${disabledAttr}>${actionOptions}</select>
+        </div>
+        <div class='field' id='acfPauseMinsField'${showPauseMins}>
+            <span>Pause/Resume Minutes</span>
+            <input type='number' id='acfBudgetPauseMins' class='control' value='${pauseMins}' min='1'${disabledAttr} />
+        </div>
+    </div>`;
+
+        if(budget){
+            var used = budget.totalTokens || 0;
+            var limit = budget.maxTokensPerPeriod || 0;
+            var pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+            var fillClass = pct < 60 ? 'is-ok' : (pct < 85 ? 'is-warn' : 'is-danger');
+            var periodLabel = '';
+            if(budget.periodStart && budget.periodEnd){
+                periodLabel = budget.periodStart + ' \u2013 ' + budget.periodEnd;
+            }
+            html += `
+    <div class='detail-card' style='margin-top:.75rem;'>
+        <h3>Current Usage</h3>
+        <div style='margin:.5rem 0'>
+            <div class='progress-track'>
+                <div class='progress-fill ${fillClass}' style='width:${limit > 0 ? pct : 0}%'></div>
+            </div>
+            <div style='display:flex;justify-content:space-between;margin-top:.35rem;font-size:.84rem;color:var(--text-secondary)'>
+                <span>${formatNumber(used)} tokens used</span>
+                <span>${limit > 0 ? formatNumber(limit) + ' limit' : 'Unlimited'}</span>
+            </div>
+        </div>
+        <div class='definition-grid' style='margin-top:.75rem;'>
+            <div class='definition-item'>
+                <div class='definition-label'>Input tokens</div>
+                <div class='definition-value'>${formatNumber(budget.totalInputTokens || 0)}</div>
+            </div>
+            <div class='definition-item'>
+                <div class='definition-label'>Output tokens</div>
+                <div class='definition-value'>${formatNumber(budget.totalOutputTokens || 0)}</div>
+            </div>
+            <div class='definition-item'>
+                <div class='definition-label'>Period</div>
+                <div class='definition-value'>${escapeHtml(budget.period || 'N/A')}</div>
+            </div>
+        </div>
+        ${periodLabel ? "<p class='field-hint' style='margin-top:.5rem'>" + escapeHtml(periodLabel) + "</p>" : ''}
+    </div>`;
+        }
+
+        html += '</div>';
+        return html;
+    }
+
+    function renderAgentTriggersTab(detail, disabledAttr){
+        var triggers = detail.triggers || [];
+        var restrictions = detail.restrictions || [];
+        return `
+<div class='agent-config-form'>
+    <div class='field'>
+        <span>Triggers (one per line)</span>
+        <textarea id='acfTriggers' class='control' rows='6' placeholder='Enter trigger phrases, one per line'${disabledAttr}>${escapeHtml(triggers.join('\n'))}</textarea>
+    </div>
+    <div class='field'>
+        <span>Restrictions (one per line)</span>
+        <textarea id='acfRestrictions' class='control' rows='6' placeholder='Enter restrictions, one per line'${disabledAttr}>${escapeHtml(restrictions.join('\n'))}</textarea>
+    </div>
+</div>`;
+    }
+
+    function saveAgentConfig(agentName){
+        var state = dashboardState.agents;
+        if(state.configSaving) return;
+
+        var body = {};
+
+        // LLM Config
+        var llmProvider = (document.getElementById('acfLlmProvider') || {}).value || '';
+        var llmModel = (document.getElementById('acfLlmModel') || {}).value || '';
+        var llmTemp = (document.getElementById('acfLlmTemp') || {}).value;
+        var llmMaxTokens = (document.getElementById('acfLlmMaxTokens') || {}).value;
+        body.llmConfig = {};
+        if(llmProvider) body.llmConfig.provider = llmProvider;
+        if(llmModel) body.llmConfig.model = llmModel;
+        if(llmTemp !== '' && llmTemp != null) body.llmConfig.temperature = parseFloat(llmTemp);
+        if(llmMaxTokens !== '' && llmMaxTokens != null) body.llmConfig.maxTokens = parseInt(llmMaxTokens, 10) || null;
+
+        // Permissions
+        body.permissions = {
+            internet: !!(document.getElementById('acfPerm_internet') || {}).checked,
+            fileSystem: !!(document.getElementById('acfPerm_fileSystem') || {}).checked,
+            codeExecution: !!(document.getElementById('acfPerm_codeExecution') || {}).checked,
+            databaseAccess: !!(document.getElementById('acfPerm_databaseAccess') || {}).checked
+        };
+
+        // Token Budget
+        var budgetMax = parseInt((document.getElementById('acfBudgetMax') || {}).value, 10);
+        var budgetPeriod = (document.getElementById('acfBudgetPeriod') || {}).value || 'Session';
+        var budgetAction = (document.getElementById('acfBudgetAction') || {}).value || 'Stop';
+        var budgetPauseMins = parseInt((document.getElementById('acfBudgetPauseMins') || {}).value, 10);
+        body.tokenBudget = {
+            maxTokensPerPeriod: isNaN(budgetMax) ? 0 : budgetMax,
+            period: budgetPeriod,
+            actionOnExceeded: budgetAction,
+            pauseResumeMinutes: isNaN(budgetPauseMins) ? 5 : budgetPauseMins
+        };
+
+        // Triggers
+        var triggersText = (document.getElementById('acfTriggers') || {}).value || '';
+        body.triggers = triggersText.split('\n').map(function(s){ return s.trim(); }).filter(function(s){ return s.length > 0; });
+
+        // Restrictions
+        var restrictionsText = (document.getElementById('acfRestrictions') || {}).value || '';
+        body.restrictions = restrictionsText.split('\n').map(function(s){ return s.trim(); }).filter(function(s){ return s.length > 0; });
+
+        // Priority
+        var priorityVal = parseInt((document.getElementById('acfPriority') || {}).value, 10);
+        body.priority = isNaN(priorityVal) ? 0 : priorityVal;
+
+        state.configSaving = true;
+        state.configError = '';
+        state.configMessage = '';
+        renderAgentConfigCard();
+
+        apiRequest('/api/agents/' + encodeURIComponent(agentName) + '/config', {
+            method:'PUT',
+            body:JSON.stringify(body)
+        }).then(function(){
+            state.configMessage = 'Agent configuration saved successfully.';
+            state.items = null;
+            return loadAgentConfig(agentName);
+        }).catch(function(error){
+            state.configError = error.message;
+        }).finally(function(){
+            state.configSaving = false;
+            renderAgentConfigCard();
+        });
+    }
+
+    function bindAgentConfigInteractions(){
+        var tempSlider = document.getElementById('acfLlmTemp');
+        var tempVal = document.getElementById('acfLlmTempVal');
+        if(tempSlider && tempVal){
+            tempSlider.oninput = function(){ tempVal.textContent = tempSlider.value; };
+        }
+        var actionSelect = document.getElementById('acfBudgetAction');
+        var pauseField = document.getElementById('acfPauseMinsField');
+        if(actionSelect && pauseField){
+            actionSelect.onchange = function(){
+                pauseField.style.display = actionSelect.value === 'PauseResume' ? '' : 'none';
+            };
+        }
+    }
+
+    // Orchestrator settings.
+    function loadOrchestratorConfig(){
+        var state = dashboardState.agents;
+        state.orchLoading = true;
+        renderOrchestratorSettings();
+
+        apiRequest('/api/orchestrator/config').then(function(config){
+            state.orchConfig = config;
+        }).catch(function(error){
+            state.orchError = error.message;
+        }).finally(function(){
+            state.orchLoading = false;
+            renderOrchestratorSettings();
+        });
+    }
+
+    function renderOrchestratorSettings(){
+        var host = document.getElementById('orchSettingsSection');
+        if(!host) return;
+        var state = dashboardState.agents;
+
+        if(state.orchLoading && !state.orchConfig){
+            host.innerHTML = '';
+            return;
+        }
+        if(!state.orchConfig){
+            host.innerHTML = '';
+            return;
+        }
+
+        var config = state.orchConfig;
+        var vis = config.delegationVisibility || 'Invisible';
+        var isSaving = state.orchSaving;
+        var disabledAttr = isSaving ? ' disabled' : '';
+        var visOptions = '';
+        var visValues = ['Invisible','Visible','Detailed'];
+        for(var i=0;i<visValues.length;i++){
+            visOptions += "<option value='" + visValues[i] + "'" + (visValues[i] === vis ? ' selected' : '') + ">" + visValues[i] + "</option>";
+        }
+
+        var banner = '';
+        if(state.orchError) banner = renderStatusBanner(state.orchError, 'error');
+        else if(state.orchMessage) banner = renderStatusBanner(state.orchMessage, 'success');
+
+        host.innerHTML = `
+<div class='card catalog-card orch-settings'>
+    <div class='section-heading'>
+        <div>
+            <h2>\uD83C\uDFAF Orchestrator Settings</h2>
+            <p>Configure how agents are delegated and coordinated.</p>
+        </div>
+    </div>
+    ${banner}
+    <div class='orch-bar'>
+        <div class='field'>
+            <span>Default Agent</span>
+            <input type='text' class='control' value='${escapeHtml(config.defaultAgent || 'N/A')}' disabled />
+        </div>
+        <div class='field'>
+            <span>Delegation Visibility</span>
+            <select id='orchVisSelect' class='control'${disabledAttr}>${visOptions}</select>
+        </div>
+        <button type='button' class='primary-button' id='orchSaveBtn' style='min-height:3rem;align-self:flex-end'${disabledAttr}>${isSaving ? 'Saving\u2026' : 'Save'}</button>
+    </div>
+</div>`;
+
+        var saveBtn = document.getElementById('orchSaveBtn');
+        if(saveBtn){
+            saveBtn.onclick = saveOrchestratorConfig;
+        }
+    }
+
+    function saveOrchestratorConfig(){
+        var state = dashboardState.agents;
+        if(state.orchSaving) return;
+        var vis = (document.getElementById('orchVisSelect') || {}).value || 'Invisible';
+
+        state.orchSaving = true;
+        state.orchError = '';
+        state.orchMessage = '';
+        renderOrchestratorSettings();
+
+        apiRequest('/api/orchestrator/config', {
+            method:'PUT',
+            body:JSON.stringify({delegationVisibility:vis})
+        }).then(function(){
+            state.orchMessage = 'Orchestrator settings saved.';
+            if(state.orchConfig) state.orchConfig.delegationVisibility = vis;
+        }).catch(function(error){
+            state.orchError = error.message;
+        }).finally(function(){
+            state.orchSaving = false;
+            renderOrchestratorSettings();
+        });
     }
 
     // Skills page.
