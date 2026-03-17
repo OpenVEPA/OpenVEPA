@@ -85,7 +85,9 @@ public static class ServerEndpointExtensions
         app.MapAgentsApiEndpoints();
         app.MapSkillsApiEndpoints();
         app.MapPreferencesApiEndpoints();
+        app.MapTokenApiEndpoints();
         app.MapSystemApiEndpoints();
+        app.MapChannelsApiEndpoints();
 
         return app;
     }

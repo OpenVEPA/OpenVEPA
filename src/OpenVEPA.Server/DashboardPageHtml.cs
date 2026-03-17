@@ -165,7 +165,7 @@ body.sidebar-collapsed .nav-link.is-active{
 /* Main area */
 .main-area{
     min-width:0;
-    min-height:100vh;
+    height:100vh;
     display:grid;
     grid-template-rows:auto 1fr;
 }
@@ -240,7 +240,7 @@ body.sidebar-collapsed .nav-link.is-active{
     display:flex;
     flex-direction:column;
     gap:1rem;
-    min-height:calc(100vh - 120px);
+    min-height:0;
 }
 .page-header{
     display:flex;
@@ -443,6 +443,10 @@ body.sidebar-collapsed .nav-link.is-active{
     flex-direction:column;
     gap:1rem;
 }
+.auth-panel[hidden],
+.chat-composer-panel[hidden]{
+    display:none;
+}
 .auth-panel{
     padding:1.15rem;
     border:1px dashed rgba(80,250,123,.2);
@@ -542,6 +546,38 @@ body.sidebar-collapsed .nav-link.is-active{
     font-size:.84rem;
     line-height:1.5;
 }
+.text-link{
+    color:var(--accent);
+    text-decoration:underline;
+    text-underline-offset:2px;
+}
+.auth-cta-stack,
+.auth-manual-help,
+.token-management-form,
+.token-created-box{
+    display:flex;
+    flex-direction:column;
+    gap:1rem;
+}
+.auth-create-card,
+.token-created-box{
+    padding:1rem;
+    border-radius:14px;
+    border:1px solid rgba(80,250,123,.24);
+    background:rgba(80,250,123,.08);
+}
+.auth-create-actions,
+.token-created-header,
+.token-table-actions{
+    display:flex;
+    gap:.75rem;
+    flex-wrap:wrap;
+    align-items:center;
+}
+.docker-command,
+.token-secret{
+    margin:0;
+}
 .empty-action{
     display:inline-flex;
     align-items:center;
@@ -588,7 +624,7 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
     body.sidebar-collapsed .nav-link{justify-content:flex-start}
     .topbar{padding:1rem}
     .page-content{padding:1rem}
-    .page-shell{min-height:calc(100vh - 104px)}
+    .page-shell{min-height:0}
 }
 @media(max-width:640px){
     .topbar-brand-row{display:block}
@@ -830,6 +866,22 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
     gap:1rem;
     min-height:220px;
 }
+.tab-bar{
+    display:flex;
+    gap:0;
+    border-bottom:2px solid #2a2a4a;
+    margin-bottom:1.5rem;
+}
+.tab{
+    padding:0.75rem 1.25rem;
+    color:var(--text-secondary);
+    text-decoration:none;
+    border-bottom:2px solid transparent;
+    margin-bottom:-2px;
+    transition:all .2s;
+}
+.tab:hover{color:var(--text-primary)}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
 .section-stack{
     display:flex;
     flex-direction:column;
@@ -1093,6 +1145,54 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
     color:var(--text-secondary);
     line-height:1.6;
 }
+.token-management-layout{
+    display:flex;
+    flex-direction:column;
+    gap:1rem;
+}
+.token-management-top{
+    display:grid;
+    gap:1rem;
+    grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+}
+.token-summary-grid{
+    display:grid;
+    gap:.85rem;
+    grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+}
+.token-summary-card{
+    background:rgba(15,52,96,.42);
+    border:1px solid var(--border);
+    border-radius:14px;
+    padding:1rem;
+}
+.token-summary-card strong{
+    display:block;
+    font-size:1.15rem;
+    margin-top:.35rem;
+}
+.token-warning{
+    color:#ffcf88;
+    line-height:1.5;
+}
+.token-status-badge{
+    display:inline-flex;
+    align-items:center;
+    border-radius:999px;
+    padding:.34rem .72rem;
+    font-size:.78rem;
+    border:1px solid transparent;
+}
+.token-status-badge.is-active{
+    color:var(--accent);
+    border-color:rgba(80,250,123,.22);
+    background:rgba(80,250,123,.08);
+}
+.token-status-badge.is-revoked{
+    color:#ffb3b3;
+    border-color:rgba(255,120,120,.28);
+    background:rgba(255,120,120,.09);
+}
 @media(max-width:900px){
     .settings-grid,
     .detail-columns{
@@ -1206,6 +1306,13 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
             render:renderSkillsPage
         },
         {
+            hash:'#/channels',
+            title:'Channels',
+            icon:'📡',
+            description:'Configure external messaging connectors.',
+            render:renderChannelsPage
+        },
+        {
             hash:'#/user-settings',
             title:'User Settings',
             icon:'👤',
@@ -1228,6 +1335,7 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
     var mobileMedia = window.matchMedia('(max-width: 900px)');
     var storageKeys = {
         token:'openvepa_token',
+        tokenId:'openvepa_token_id',
         sessionId:'openvepa_active_session_id'
     };
     var homeState = {
@@ -1238,6 +1346,9 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
         token:'',
         tokenDraft:'',
         authError:'',
+        isBootstrapping:false,
+        bootstrapMessage:'',
+        bootstrapMessageKind:'info',
         sessions:[],
         sessionsLoaded:false,
         sessionsError:'',
@@ -1304,7 +1415,26 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
     }
 
     function getRoute(){
-        return routeMap[window.location.hash] || routeMap['#/home'];
+        var hash = window.location.hash;
+        if(hash === '#/user-settings' || hash.indexOf('#/user-settings/') === 0){
+            return routeMap['#/user-settings'];
+        }
+        if(hash === '#/channels' || hash.indexOf('#/channels/') === 0){
+            return routeMap['#/channels'];
+        }
+        return routeMap[hash] || routeMap['#/home'];
+    }
+
+    function getActiveSettingsTab(){
+        var hash = window.location.hash;
+        var prefix = '#/user-settings/';
+        if(hash.indexOf(prefix) === 0){
+            var tab = hash.substring(prefix.length).split('/')[0];
+            if(tab === 'profile' || tab === 'preferences' || tab === 'tokens'){
+                return tab;
+            }
+        }
+        return 'profile';
     }
 
     function updateActiveNav(routeHash){
@@ -1321,6 +1451,10 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
     }
 
     function renderRoute(){
+        if(window.location.hash === '#/user-settings'){
+            window.location.hash = '#/user-settings/profile';
+            return;
+        }
         var route = getRoute();
         pageTitle.textContent = route.title;
         pageSubtitle.textContent = route.description;
@@ -1373,11 +1507,13 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
 
             homeState.token = nextToken;
             homeState.authError = '';
+            homeState.bootstrapMessage = '';
             homeState.sessions = [];
             homeState.messages = [];
             homeState.sessionsLoaded = false;
             homeState.messagesLoadedFor = '';
             storeToken(nextToken);
+            storeTokenId('');
             updateHomePage();
             loadHomeSessions(true);
         });
@@ -1398,6 +1534,12 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
             if(button.id === 'chatSendButton'){
                 event.preventDefault();
                 sendMessage();
+                return;
+            }
+
+            if(button.id === 'bootstrapTokenButton'){
+                event.preventDefault();
+                createBootstrapToken();
                 return;
             }
 
@@ -1458,7 +1600,7 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
         var composerPanel = document.getElementById('chatComposerPanel');
         var loadingIndicator = document.getElementById('chatLoadingIndicator');
         var messagesHost = document.getElementById('chatMessages');
-        var busy = homeState.statusLoading || homeState.isLoadingSessions || homeState.isLoadingMessages || homeState.isSending || homeState.isCreatingSession;
+        var busy = homeState.statusLoading || homeState.isLoadingSessions || homeState.isLoadingMessages || homeState.isSending || homeState.isCreatingSession || homeState.isBootstrapping;
         var showComposer = canUseChat();
 
         statusPill.textContent = getHomeStatusPillText();
@@ -1513,7 +1655,7 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
         <p>The WebUI could not reach the local server status endpoint.</p>
     </div>
 </div>
-<div class="error-banner">${escapeHtml(homeState.statusError)}</div>`;
+${renderErrorBanner(homeState.statusError)}`;
             return;
         }
 
@@ -1533,20 +1675,39 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
 <div class="section-heading">
     <div>
         <h2>Bearer token required</h2>
-        <p>Paste a token for this browser session. It will be stored in localStorage and sent on every REST request.</p>
+        <p>Use a token to unlock chat, sessions, and settings in this browser.</p>
     </div>
 </div>
-${homeState.authError ? `<div class="error-banner">${escapeHtml(homeState.authError)}</div>` : ''}
-<form id="tokenForm" class="auth-form">
-    <label class="field" for="tokenInput">
-        <span>Bearer token</span>
-        <input id="tokenInput" class="control" type="password" placeholder="Paste Bearer token" autocomplete="off" spellcheck="false" value="${escapeHtml(homeState.tokenDraft)}">
-    </label>
-    <div class="toolbar-actions">
-        <button type="submit" class="primary-button">Save token</button>
+${renderErrorBanner(homeState.authError)}
+${homeState.bootstrapMessage ? renderStatusBanner(homeState.bootstrapMessage, homeState.bootstrapMessageKind || 'info') : ''}
+<div class="auth-cta-stack">
+    <div class="auth-create-card">
+        <div>
+            <h3>Create your first token</h3>
+            <p class="helper-note">On a brand-new OpenVEPA install, the browser can bootstrap a token automatically.</p>
+        </div>
+        <div class="auth-create-actions">
+            <button type="button" class="primary-button" id="bootstrapTokenButton" ${homeState.isBootstrapping ? 'disabled' : ''}>${homeState.isBootstrapping ? 'Creating…' : 'Create your first token'}</button>
+            <span class="helper-note">Calls <code>POST /api/tokens/bootstrap</code> with <code>{ "name": "web-browser" }</code>.</span>
+        </div>
     </div>
-    <p class="helper-note">Once saved, the dashboard calls <code>/api/sessions</code> and <code>/api/sessions/{id}/messages</code> with an <code>Authorization: Bearer &lt;token&gt;</code> header.</p>
-</form>`;
+    <form id="tokenForm" class="auth-form">
+        <label class="field" for="tokenInput">
+            <span>Bearer token</span>
+            <input id="tokenInput" class="control" type="password" placeholder="Paste Bearer token" autocomplete="off" spellcheck="false" value="${escapeHtml(homeState.tokenDraft)}">
+        </label>
+        <div class="auth-manual-help">
+            <p class="helper-note">If you're running in Docker, you can create a token via:</p>
+            <pre class="detail-code docker-command">docker exec openvepa openvepa token create "my-token"</pre>
+            <p class="helper-note">Then paste the token above.</p>
+        </div>
+        <div class="toolbar-actions">
+            <button type="submit" class="primary-button">Save token</button>
+            <a class="text-link" href="#/user-settings/tokens">Manage tokens in User Settings</a>
+        </div>
+        <p class="helper-note">Once saved, the dashboard calls <code>/api/sessions</code>, <code>/api/sessions/{id}/messages</code>, and token management APIs with an <code>Authorization: Bearer &lt;token&gt;</code> header.</p>
+    </form>
+</div>`;
     }
 
     function renderSessionSelect(){
@@ -1597,7 +1758,7 @@ ${homeState.authError ? `<div class="error-banner">${escapeHtml(homeState.authEr
 
         if(homeState.statusError){
             host.innerHTML = `
-<div class="error-banner">${escapeHtml(homeState.statusError)}</div>
+${renderErrorBanner(homeState.statusError)}
 ${renderEmptyState('Server unavailable', 'Fix the server status issue and refresh the page to continue.')}`;
             return;
         }
@@ -1608,7 +1769,7 @@ ${renderEmptyState('Server unavailable', 'Fix the server status issue and refres
         }
 
         if(!homeState.token){
-            host.innerHTML = renderEmptyState('Authentication required', 'Enter a bearer token below to load or create assistant sessions in this browser.');
+            host.innerHTML = renderEmptyState('Authentication required', 'Create or paste a bearer token below to load assistant sessions in this browser.');
             return;
         }
 
@@ -1619,7 +1780,7 @@ ${renderEmptyState('Server unavailable', 'Fix the server status issue and refres
 
         if(homeState.sessionsError && homeState.sessions.length === 0){
             host.innerHTML = `
-<div class="error-banner">${escapeHtml(homeState.sessionsError)}</div>
+${renderErrorBanner(homeState.sessionsError)}
 ${renderEmptyState('Unable to load sessions', 'Review the error above, then try again with a valid token.')}`;
             return;
         }
@@ -1769,7 +1930,7 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         try {
             var sessions = await fetchJson('/api/sessions', {
                 headers:getHomeAuthHeaders()
-            }, 'Enter a valid bearer token to load chat sessions.');
+            }, getTokenRecoveryMessage());
             if(!sessions){
                 return;
             }
@@ -1845,7 +2006,7 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         try {
             var payload = await fetchJson(`/api/sessions/${encodeURIComponent(sessionId)}/messages?page=1&pageSize=100`, {
                 headers:getHomeAuthHeaders()
-            }, 'Enter a valid bearer token to load message history.');
+            }, getTokenRecoveryMessage());
             if(!payload || requestId !== homeState.requestCounter){
                 return;
             }
@@ -1884,7 +2045,7 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
                 method:'POST',
                 headers:getHomeJsonAuthHeaders(),
                 body:JSON.stringify({ title:buildSessionTitle() })
-            }, 'Enter a valid bearer token to create a new chat session.');
+            }, getTokenRecoveryMessage());
             if(!session){
                 return;
             }
@@ -1939,7 +2100,7 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
                 method:'POST',
                 headers:getHomeJsonAuthHeaders(),
                 body:JSON.stringify({ message:messageText })
-            }, 'Enter a valid bearer token to send a chat message.');
+            }, getTokenRecoveryMessage());
             if(!assistantMessage){
                 return;
             }
@@ -1953,6 +2114,49 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
             homeState.isSending = false;
             updateHomePage();
             scrollChatToBottom();
+        }
+    }
+
+    async function createBootstrapToken(){
+        if(homeState.isBootstrapping){
+            return;
+        }
+
+        homeState.isBootstrapping = true;
+        homeState.authError = '';
+        homeState.bootstrapMessage = '';
+        updateHomePage();
+
+        try {
+            var response = await fetch('/api/tokens/bootstrap', {
+                method:'POST',
+                headers:{
+                    Accept:'application/json',
+                    'Content-Type':'application/json'
+                },
+                body:JSON.stringify({ name:'web-browser' })
+            });
+            var payload = await readJsonResponse(response);
+            if(response.ok && payload && payload.token){
+                homeState.token = payload.token;
+                homeState.tokenDraft = payload.token;
+                storeToken(payload.token);
+                storeTokenId(payload.tokenId || '');
+                window.location.reload();
+                return;
+            }
+
+            if(response.status === 403){
+                homeState.bootstrapMessage = 'Bootstrap token creation is only available before any tokens exist. Paste an existing token below or create one with Docker.';
+                homeState.bootstrapMessageKind = 'info';
+            } else {
+                homeState.authError = getApiErrorMessage(response, payload, 'Unable to create a bootstrap token.');
+            }
+        } catch (error) {
+            homeState.authError = error && error.message ? error.message : 'Unable to create a bootstrap token.';
+        } finally {
+            homeState.isBootstrapping = false;
+            updateHomePage();
         }
     }
 
@@ -1988,6 +2192,10 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
             return 'Token required';
         }
 
+        if(homeState.isBootstrapping){
+            return 'Creating token';
+        }
+
         if(homeState.isCreatingSession){
             return 'Creating session';
         }
@@ -2017,7 +2225,11 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         }
 
         if(!homeState.token){
-            return 'Provide a bearer token to load sessions and message history.';
+            return 'Create or provide a bearer token to load sessions and message history.';
+        }
+
+        if(homeState.isBootstrapping){
+            return 'Creating a browser token for this WebUI session.';
         }
 
         if(homeState.isSending){
@@ -2070,7 +2282,7 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         var response = await fetch(url, options || {});
 
         if(response.status === 401 || response.status === 403){
-            handleUnauthorized(unauthorizedMessage || 'Authentication failed.');
+            handleUnauthorized(unauthorizedMessage || getTokenRecoveryMessage());
             return null;
         }
 
@@ -2100,7 +2312,7 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
 
         try {
             var payload = JSON.parse(text);
-            return payload.detail || payload.title || payload.message || text;
+            return payload.detail || payload.title || payload.message || payload.error || text;
         } catch (error) {
             return text;
         }
@@ -2110,12 +2322,14 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         homeState.token = '';
         homeState.tokenDraft = '';
         homeState.authError = message;
+        homeState.bootstrapMessage = '';
         homeState.sessions = [];
         homeState.messages = [];
         homeState.sessionsLoaded = false;
         homeState.messagesLoadedFor = '';
         homeState.sessionsError = '';
         storeToken('');
+        storeTokenId('');
         updateHomePage();
     }
 
@@ -2123,12 +2337,14 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         homeState.token = '';
         homeState.tokenDraft = '';
         homeState.authError = '';
+        homeState.bootstrapMessage = '';
         homeState.sessions = [];
         homeState.messages = [];
         homeState.sessionsLoaded = false;
         homeState.messagesLoadedFor = '';
         homeState.sessionsError = '';
         storeToken('');
+        storeTokenId('');
         updateHomePage();
     }
 
@@ -2138,6 +2354,18 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
                 localStorage.setItem(storageKeys.token, token);
             } else {
                 localStorage.removeItem(storageKeys.token);
+            }
+        } catch (error) {
+            // Ignore storage errors so the SPA still works for the current page lifetime.
+        }
+    }
+
+    function storeTokenId(tokenId){
+        try {
+            if(tokenId){
+                localStorage.setItem(storageKeys.tokenId, tokenId);
+            } else {
+                localStorage.removeItem(storageKeys.tokenId);
             }
         } catch (error) {
             // Ignore storage errors so the SPA still works for the current page lifetime.
@@ -2468,7 +2696,12 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
             detailError:{},
             expandedName:'',
             isLoading:false,
-            error:''
+            error:'',
+            editingSystem:false,
+            systemPrefs:{displayName:'',tone:'Professional'},
+            systemPrefsSaving:false,
+            systemPrefsMessage:'',
+            systemPrefsError:''
         },
         skills:{
             items:null,
@@ -2486,6 +2719,25 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
             isMutating:false,
             message:'',
             error:''
+        },
+        tokens:{
+            items:null,
+            isLoading:false,
+            isCreating:false,
+            revokingId:'',
+            createResult:null,
+            revealTimeoutId:0,
+            message:'',
+            error:''
+        },
+        channels:{
+            items:null,
+            detail:null,
+            detailId:'',
+            isLoading:false,
+            isSaving:false,
+            message:'',
+            error:''
         }
     };
 
@@ -2499,7 +2751,19 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
     }
 
     function getAuthToken(){
-        return window.localStorage.getItem('openvepa_token') || '';
+        try{
+            return window.localStorage.getItem(storageKeys.token) || '';
+        } catch(error){
+            return '';
+        }
+    }
+
+    function getStoredTokenId(){
+        try{
+            return window.localStorage.getItem(storageKeys.tokenId) || '';
+        } catch(error){
+            return '';
+        }
     }
 
     function apiRequest(url, options){
@@ -2538,10 +2802,10 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
 
                 if(!response.ok){
                     var message = 'Request failed with status ' + response.status + '.';
-                    if(response.status === 401){
-                        message = token
-                            ? 'Your OpenVEPA session has expired. Sign in again to continue.'
-                            : 'OpenVEPA token missing. Sign in again to continue.';
+                    if(response.status === 401 || response.status === 403){
+                        storeToken('');
+                        storeTokenId('');
+                        message = getTokenRecoveryMessage();
                     } else if(data && typeof data === 'object' && data.error){
                         message = data.error;
                     } else if(typeof data === 'string' && data){
@@ -2603,12 +2867,40 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         return count === 1 ? singular : (plural || singular + 's');
     }
 
+    function getTokenRecoveryMessage(){
+        return 'Token missing or expired.';
+    }
+
+    function isTokenRecoveryMessage(message){
+        var normalized = String(message || '').toLowerCase();
+        return normalized === getTokenRecoveryMessage().toLowerCase()
+            || normalized.indexOf('sign in again') !== -1
+            || normalized.indexOf('token missing') !== -1
+            || normalized.indexOf('session has expired') !== -1;
+    }
+
+    function renderMessageWithLinks(message){
+        if(isTokenRecoveryMessage(message)){
+            return `Token missing or expired. <a class='text-link' href='#/home'>Enter token</a> or <a class='text-link' href='#/user-settings/tokens'>manage tokens</a>.`;
+        }
+
+        return escapeHtml(message);
+    }
+
+    function renderErrorBanner(message){
+        if(!message){
+            return '';
+        }
+
+        return `<div class='error-banner'>${renderMessageWithLinks(message)}</div>`;
+    }
+
     function renderStatusBanner(message, kind){
         if(!message){
             return '';
         }
 
-        return `<div class='status-banner is-${kind || 'info'}'>${escapeHtml(message)}</div>`;
+        return `<div class='status-banner is-${kind || 'info'}'>${renderMessageWithLinks(message)}</div>`;
     }
 
     function renderLoadingPanel(message){
@@ -2629,6 +2921,17 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
     <p>${escapeHtml(description)}</p>
     ${actionHtml}
 </div>`;
+    }
+
+    function renderTabBar(tabs, activeTab){
+        var html = '<nav class="tab-bar">';
+        for(var i=0;i<tabs.length;i++){
+            var tab = tabs[i];
+            var isActive = tab.id === activeTab;
+            html += '<a href="' + escapeHtml(tab.href) + '" class="tab' + (isActive ? ' active' : '') + '">' + tab.icon + ' ' + escapeHtml(tab.label) + '</a>';
+        }
+        html += '</nav>';
+        return html;
     }
 
     function renderCountBadge(count, singular, plural){
@@ -3073,7 +3376,7 @@ ${banner}
         </div>
         <span class='pill'>Agent catalog</span>
     </header>
-    <div class='catalog-list' id='agentsList'>${renderLoadingPanel('Loading agents…')}</div>
+    <div class='catalog-list' id='agentsList'>${renderLoadingPanel('Loading agents\u2026')}</div>
 </section>`;
     }
 
@@ -3100,11 +3403,27 @@ ${banner}
 
         return apiRequest('/api/agents').then(function(items){
             state.items = items || [];
+            loadSystemAgentPrefs();
         }).catch(function(error){
             state.error = error.message;
         }).finally(function(){
             state.isLoading = false;
             renderAgentsList();
+        });
+    }
+
+    function loadSystemAgentPrefs(){
+        var state = dashboardState.agents;
+        apiRequest('/api/preferences/agent').then(function(prefs){
+            if(prefs){
+                var dn = prefs['agent.assistant.displayName'];
+                var tn = prefs['agent.assistant.tone'];
+                if(dn && dn.value) state.systemPrefs.displayName = dn.value;
+                if(tn && tn.value) state.systemPrefs.tone = tn.value;
+            }
+            renderAgentsList();
+        }).catch(function(){
+            // Preferences may not exist yet; use defaults.
         });
     }
 
@@ -3131,6 +3450,7 @@ ${banner}
     function toggleAgentExpansion(name){
         var state = dashboardState.agents;
         state.expandedName = state.expandedName === name ? '' : name;
+        if(state.expandedName !== name) state.editingSystem = false;
         renderAgentsList();
         if(state.expandedName === name && !state.detailByName[name]){
             loadAgentDetail(name);
@@ -3139,7 +3459,7 @@ ${banner}
 
     function renderAgentDetail(summary, detail, isLoading, error){
         if(isLoading){
-            return `<div class='expand-panel'>${renderLoadingPanel('Loading agent details…')}</div>`;
+            return `<div class='expand-panel'>${renderLoadingPanel('Loading agent details\u2026')}</div>`;
         }
         if(error){
             return `<div class='expand-panel'>${renderStatusBanner(error, 'error')}<div class='settings-actions'><button type='button' class='secondary-button' data-agent-detail-retry='${escapeHtml(summary.name)}'>Retry</button></div></div>`;
@@ -3151,7 +3471,7 @@ ${banner}
         var capabilities = detail.llmRequirements && detail.llmRequirements.capabilities
             ? detail.llmRequirements.capabilities
             : [];
-        return `
+        var html = `
 <div class='expand-panel'>
     <div class='detail-card'>
         <h3>System prompt preview</h3>
@@ -3166,8 +3486,71 @@ ${banner}
             <h3>LLM requirements</h3>
             ${renderTokens(capabilities, 'No explicit LLM capabilities declared.')}
         </div>
+    </div>`;
+        if(summary.isSystem){
+            html += renderSystemAgentCustomization();
+        }
+        html += `</div>`;
+        return html;
+    }
+
+    var agentToneOptions = ['Professional','Friendly','Concise','Detailed'];
+
+    function renderSystemAgentCustomization(){
+        var state = dashboardState.agents;
+        if(!state.editingSystem){
+            return `<div class='settings-actions' style='margin-top:1rem;'><button type='button' class='secondary-button' data-agents-action='edit-system'>Edit preferences</button></div>`;
+        }
+        var toneSelect = '<select id="agentToneSelect" class="settings-input">';
+        for(var i=0;i<agentToneOptions.length;i++){
+            var sel = agentToneOptions[i] === state.systemPrefs.tone ? ' selected' : '';
+            toneSelect += '<option value="' + escapeHtml(agentToneOptions[i]) + '"' + sel + '>' + escapeHtml(agentToneOptions[i]) + '</option>';
+        }
+        toneSelect += '</select>';
+        var banner = '';
+        if(state.systemPrefsMessage) banner = renderStatusBanner(state.systemPrefsMessage, 'success');
+        if(state.systemPrefsError) banner = renderStatusBanner(state.systemPrefsError, 'error');
+        return `
+<div class='detail-card' style='margin-top:1rem;'>
+    <h3>Customize assistant</h3>
+    ${banner}
+    <div class='form-group'>
+        <label class='settings-label' for='agentDisplayNameInput'>Display name</label>
+        <input type='text' id='agentDisplayNameInput' class='settings-input' placeholder='e.g. Jarvis' value='${escapeHtml(state.systemPrefs.displayName)}' />
+    </div>
+    <div class='form-group'>
+        <label class='settings-label' for='agentToneSelect'>Chat tone</label>
+        ${toneSelect}
+    </div>
+    <div class='settings-actions'>
+        <button type='button' class='primary-button' data-agents-action='save-system' ${state.systemPrefsSaving ? 'disabled' : ''}>${state.systemPrefsSaving ? 'Saving\u2026' : 'Save'}</button>
+        <button type='button' class='secondary-button' data-agents-action='cancel-system'>Cancel</button>
     </div>
 </div>`;
+    }
+
+    function saveSystemAgentPrefs(){
+        var state = dashboardState.agents;
+        var displayName = (document.getElementById('agentDisplayNameInput') || {}).value || '';
+        var tone = (document.getElementById('agentToneSelect') || {}).value || 'Professional';
+        state.systemPrefsSaving = true;
+        state.systemPrefsMessage = '';
+        state.systemPrefsError = '';
+        renderAgentsList();
+
+        var p1 = upsertPreference('agent.assistant.displayName', displayName.trim(), 'agent');
+        var p2 = upsertPreference('agent.assistant.tone', tone, 'agent');
+        Promise.all([p1, p2]).then(function(){
+            state.systemPrefs.displayName = displayName.trim();
+            state.systemPrefs.tone = tone;
+            state.systemPrefsMessage = 'Preferences saved.';
+            state.editingSystem = false;
+        }).catch(function(err){
+            state.systemPrefsError = err.message || 'Failed to save preferences.';
+        }).finally(function(){
+            state.systemPrefsSaving = false;
+            renderAgentsList();
+        });
     }
 
     function renderAgentsList(){
@@ -3183,7 +3566,7 @@ ${banner}
         }
 
         if(state.isLoading && !state.items){
-            container.innerHTML = html + renderLoadingPanel('Loading agents…');
+            container.innerHTML = html + renderLoadingPanel('Loading agents\u2026');
             container.onclick = handleAgentsClick;
             return;
         }
@@ -3201,19 +3584,23 @@ ${banner}
         for(var i=0;i<state.items.length;i++){
             var summary = state.items[i];
             var expanded = state.expandedName === summary.name;
+            var systemBadge = summary.isSystem ? "<span class='pill' style='background:var(--accent);color:#000;font-size:0.7rem;margin-left:0.5rem;'>System</span>" : '';
+            var displayTitle = summary.isSystem && state.systemPrefs.displayName
+                ? escapeHtml(state.systemPrefs.displayName) + " <span style='opacity:0.5;font-size:0.85em;'>(" + escapeHtml(summary.name) + ")</span>"
+                : escapeHtml(summary.name);
             html += `
 <article class='card catalog-card'>
     <button type='button' class='catalog-trigger' data-agent-name='${escapeHtml(summary.name)}' aria-expanded='${expanded ? 'true' : 'false'}'>
         <div class='catalog-summary'>
             <div>
-                <h2 class='catalog-title'>${escapeHtml(summary.name)}</h2>
+                <h2 class='catalog-title'>${displayTitle}${systemBadge}</h2>
                 <p class='catalog-description'>${escapeHtml(summary.description || 'No description provided.')}</p>
                 <div class='badge-row'>
                     ${renderAutonomyBadge(summary.autonomyLevel)}
                     ${renderCountBadge(summary.skillCount, 'skill')}
                 </div>
             </div>
-            <span class='expand-icon' aria-hidden='true'>${expanded ? '−' : '+'}</span>
+            <span class='expand-icon' aria-hidden='true'>${expanded ? '\u2212' : '+'}</span>
         </div>
     </button>
     ${expanded ? renderAgentDetail(summary, state.detailByName[summary.name], !!state.detailLoading[summary.name], state.detailError[summary.name]) : ''}
@@ -3234,6 +3621,28 @@ ${banner}
         var retryButton = event.target.closest('[data-agent-detail-retry]');
         if(retryButton){
             loadAgentDetail(retryButton.getAttribute('data-agent-detail-retry'));
+            return;
+        }
+
+        var editBtn = event.target.closest('[data-agents-action="edit-system"]');
+        if(editBtn){
+            dashboardState.agents.editingSystem = true;
+            dashboardState.agents.systemPrefsMessage = '';
+            dashboardState.agents.systemPrefsError = '';
+            renderAgentsList();
+            return;
+        }
+
+        var cancelBtn = event.target.closest('[data-agents-action="cancel-system"]');
+        if(cancelBtn){
+            dashboardState.agents.editingSystem = false;
+            renderAgentsList();
+            return;
+        }
+
+        var saveBtn = event.target.closest('[data-agents-action="save-system"]');
+        if(saveBtn){
+            saveSystemAgentPrefs();
             return;
         }
 
@@ -3488,34 +3897,348 @@ ${banner}
         }
     }
 
+    // Channels page.
+    function getActiveChannelId(){
+        var hash = window.location.hash;
+        var prefix = '#/channels/';
+        if(hash.indexOf(prefix) === 0){
+            return hash.substring(prefix.length).split('/')[0];
+        }
+        return '';
+    }
+
+    function renderChannelsPage(){
+        var channelId = getActiveChannelId();
+        if(channelId){
+            queuePageInit(function(){ initChannelDetailPage(channelId); });
+            return renderChannelDetailPage(channelId);
+        }
+        queuePageInit(initChannelsOverview);
+        return `
+<!-- Page: Channels -->
+<section class='page-shell'>
+    <header class='page-header'>
+        <div>
+            <h1>Channels</h1>
+            <p>Configure external messaging connectors such as Telegram, Discord, Email, and WhatsApp.</p>
+        </div>
+        <span class='pill'>Connectors</span>
+    </header>
+    <div id='channelsStatus'></div>
+    <div class='settings-grid' id='channelsGrid'>${renderLoadingPanel('Loading channels\u2026')}</div>
+</section>`;
+    }
+
+    function initChannelsOverview(){
+        renderChannelsGrid();
+        if(!dashboardState.channels.items){
+            loadChannels(false);
+        }
+    }
+
+    function loadChannels(force){
+        var state = dashboardState.channels;
+        if(state.isLoading){
+            return Promise.resolve();
+        }
+        if(!force && state.items){
+            renderChannelsGrid();
+            return Promise.resolve();
+        }
+        state.isLoading = true;
+        state.error = '';
+        renderChannelsGrid();
+
+        return apiRequest('/api/channels').then(function(payload){
+            state.items = payload && payload.channels ? payload.channels : [];
+        }).catch(function(error){
+            state.error = error.message;
+        }).finally(function(){
+            state.isLoading = false;
+            renderChannelsGrid();
+        });
+    }
+
+    function renderChannelsGrid(){
+        var host = document.getElementById('channelsGrid');
+        var statusHost = document.getElementById('channelsStatus');
+        if(!host) return;
+        var state = dashboardState.channels;
+        if(statusHost){
+            statusHost.innerHTML = renderStatusBanner(state.error, 'error') || renderStatusBanner(state.message, 'success');
+        }
+        if(state.isLoading && !state.items){
+            host.innerHTML = renderLoadingPanel('Loading channels\u2026');
+            return;
+        }
+        if(!state.items || state.items.length === 0){
+            host.innerHTML = renderSettingsEmptyState('No channels found', 'Channel definitions could not be loaded.');
+            return;
+        }
+        var html = '';
+        for(var i = 0; i < state.items.length; i++){
+            var ch = state.items[i];
+            var statusClass = ch.enabled ? 'is-accent' : (ch.configured ? 'is-muted' : 'is-muted');
+            var statusLabel = ch.enabled ? 'Enabled' : (ch.configured ? 'Disabled' : 'Not Configured');
+            html += `
+<a href='#/channels/${escapeHtml(ch.id)}' class='card catalog-card' style='text-decoration:none;color:inherit;cursor:pointer'>
+    <div class='catalog-summary'>
+        <div>
+            <div class='catalog-title'><span style='margin-right:.5rem;font-size:1.3rem'>${escapeHtml(ch.icon)}</span>${escapeHtml(ch.name)}</div>
+            <div class='catalog-description'>${escapeHtml(ch.description)}</div>
+        </div>
+        <span class='badge ${statusClass}'>${statusLabel}</span>
+    </div>
+</a>`;
+        }
+        host.innerHTML = html;
+    }
+
+    function renderChannelDetailPage(channelId){
+        return `
+<section class='page-shell'>
+    <header class='page-header'>
+        <div>
+            <h1 id='channelDetailTitle'>Channel Configuration</h1>
+            <p id='channelDetailDesc'>Loading channel details\u2026</p>
+        </div>
+        <a href='#/channels' class='secondary-button'>\u2190 Back to Channels</a>
+    </header>
+    <div id='channelDetailStatus'></div>
+    <section class='card settings-card' id='channelDetailCard'>${renderLoadingPanel('Loading channel configuration\u2026')}</section>
+</section>`;
+    }
+
+    function initChannelDetailPage(channelId){
+        var state = dashboardState.channels;
+        state.detailId = channelId;
+        state.detail = null;
+        state.message = '';
+        state.error = '';
+        loadChannelDetail(channelId);
+    }
+
+    function loadChannelDetail(channelId){
+        var state = dashboardState.channels;
+        state.isLoading = true;
+        state.error = '';
+        renderChannelDetailCard();
+
+        return apiRequest('/api/channels/' + encodeURIComponent(channelId)).then(function(detail){
+            state.detail = detail;
+            var titleEl = document.getElementById('channelDetailTitle');
+            var descEl = document.getElementById('channelDetailDesc');
+            if(titleEl) titleEl.textContent = (detail.icon || '') + ' ' + (detail.name || channelId);
+            if(descEl) descEl.textContent = detail.description || '';
+        }).catch(function(error){
+            state.error = error.message;
+        }).finally(function(){
+            state.isLoading = false;
+            renderChannelDetailCard();
+        });
+    }
+
+    function renderChannelDetailCard(){
+        var card = document.getElementById('channelDetailCard');
+        var statusHost = document.getElementById('channelDetailStatus');
+        if(!card) return;
+        var state = dashboardState.channels;
+        if(statusHost){
+            statusHost.innerHTML = renderStatusBanner(state.error, 'error') || renderStatusBanner(state.message, 'success');
+        }
+        if(state.isLoading && !state.detail){
+            card.innerHTML = renderLoadingPanel('Loading channel configuration\u2026');
+            return;
+        }
+        if(!state.detail){
+            card.innerHTML = renderSettingsEmptyState('Channel not found', 'Could not load configuration for this channel.');
+            return;
+        }
+        var detail = state.detail;
+        var channelId = detail.id || state.detailId;
+        card.innerHTML = renderChannelForm(channelId, detail);
+    }
+
+    function renderChannelForm(channelId, detail){
+        var isSaving = dashboardState.channels.isSaving;
+        var disabledAttr = isSaving ? 'disabled' : '';
+        var enabled = !!detail.enabled;
+        var fields = detail.fields || {};
+        var html = `
+<div class='section-heading'>
+    <div>
+        <h2>${escapeHtml(detail.name)} Configuration</h2>
+        <p>Update settings for this channel connector. Sensitive fields are masked for security.</p>
+    </div>
+</div>
+<div class='field'>
+    <span>Status</span>
+    <select id='channelEnabledSelect' class='control' ${disabledAttr}>
+        <option value='true'${enabled ? " selected" : ""}>Enabled</option>
+        <option value='false'${!enabled ? " selected" : ""}>Disabled</option>
+    </select>
+</div>`;
+
+        if(channelId === 'telegram'){
+            html += renderChannelField('channelBotToken', 'Bot Token', fields.botToken || '', 'password', 'Telegram bot token from @BotFather', disabledAttr);
+            html += renderChannelField('channelWebhookUrl', 'Webhook URL (optional)', fields.webhookUrl || '', 'url', 'https://example.com/webhook', disabledAttr);
+        } else if(channelId === 'discord'){
+            html += renderChannelField('channelBotToken', 'Bot Token', fields.botToken || '', 'password', 'Discord bot token', disabledAttr);
+            html += renderChannelField('channelGuildId', 'Guild ID', fields.guildId || '', 'text', 'Discord server (guild) ID', disabledAttr);
+        } else if(channelId === 'email'){
+            html += renderChannelField('channelSmtpHost', 'SMTP Host', fields.smtpHost || '', 'text', 'smtp.example.com', disabledAttr);
+            html += renderChannelField('channelSmtpPort', 'SMTP Port', fields.smtpPort || '587', 'number', '587', disabledAttr);
+            html += renderChannelField('channelUsername', 'Username', fields.username || '', 'text', 'user@example.com', disabledAttr);
+            html += renderChannelField('channelPassword', 'Password', fields.password || '', 'password', 'SMTP password', disabledAttr);
+            html += renderChannelField('channelFromAddress', 'From Address', fields.fromAddress || '', 'email', 'noreply@example.com', disabledAttr);
+        } else if(channelId === 'whatsapp'){
+            html += `<div class='status-banner is-info' style='background:rgba(80,250,123,.06);border-color:rgba(80,250,123,.18);margin-top:.5rem'><p>Coming soon \u2014 WhatsApp Business API integration is planned for a future release.</p></div>`;
+        }
+
+        html += `
+<div class='settings-actions' style='margin-top:1rem'>
+    <a href='#/channels' class='secondary-button'>Cancel</a>
+    <button type='button' class='primary-button' id='channelSaveButton' ${disabledAttr}>${isSaving ? 'Saving\u2026' : 'Save settings'}</button>
+</div>`;
+        return html;
+    }
+
+    function renderChannelField(id, label, value, type, placeholder, disabledAttr){
+        var inputValue = value === '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022' ? '' : value;
+        return `
+<div class='field'>
+    <span>${escapeHtml(label)}</span>
+    <input id='${escapeHtml(id)}' class='control' type='${type}' value='${escapeHtml(inputValue)}' placeholder='${escapeHtml(placeholder)}' ${disabledAttr}>
+</div>`;
+    }
+
+    function saveChannelConfig(){
+        var state = dashboardState.channels;
+        if(state.isSaving || !state.detail) return;
+        var channelId = state.detail.id || state.detailId;
+
+        var body = {};
+        var enabledSelect = document.getElementById('channelEnabledSelect');
+        if(enabledSelect){
+            body.enabled = enabledSelect.value === 'true';
+        }
+
+        if(channelId === 'telegram'){
+            collectField(body, 'channelBotToken', 'botToken');
+            collectField(body, 'channelWebhookUrl', 'webhookUrl');
+        } else if(channelId === 'discord'){
+            collectField(body, 'channelBotToken', 'botToken');
+            collectField(body, 'channelGuildId', 'guildId');
+        } else if(channelId === 'email'){
+            collectField(body, 'channelSmtpHost', 'smtpHost');
+            collectFieldAsInt(body, 'channelSmtpPort', 'smtpPort');
+            collectField(body, 'channelUsername', 'username');
+            collectField(body, 'channelPassword', 'password');
+            collectField(body, 'channelFromAddress', 'fromAddress');
+        } else if(channelId === 'whatsapp'){
+            // No additional fields.
+        }
+
+        state.isSaving = true;
+        state.error = '';
+        state.message = '';
+        renderChannelDetailCard();
+
+        apiRequest('/api/channels/' + encodeURIComponent(channelId), {
+            method:'PUT',
+            body:JSON.stringify(body)
+        }).then(function(result){
+            state.message = (result && result.message) || 'Channel configuration saved.';
+            state.items = null;
+            return loadChannelDetail(channelId);
+        }).catch(function(error){
+            state.error = error.message;
+        }).finally(function(){
+            state.isSaving = false;
+            renderChannelDetailCard();
+        });
+    }
+
+    function collectField(body, elementId, fieldName){
+        var el = document.getElementById(elementId);
+        if(el && el.value.trim()){
+            body[fieldName] = el.value.trim();
+        }
+    }
+
+    function collectFieldAsInt(body, elementId, fieldName){
+        var el = document.getElementById(elementId);
+        if(el && el.value.trim()){
+            var parsed = parseInt(el.value.trim(), 10);
+            if(!isNaN(parsed)){
+                body[fieldName] = parsed;
+            }
+        }
+    }
+
+    // Channel page click delegation.
+    pageContainer.addEventListener('click', function(event){
+        if(event.target.closest('#channelSaveButton')){
+            event.preventDefault();
+            saveChannelConfig();
+        }
+    });
+
     // User settings page.
+    var userSettingsTabs = [
+        { id:'profile', href:'#/user-settings/profile', icon:'👤', label:'Profile' },
+        { id:'preferences', href:'#/user-settings/preferences', icon:'⚙️', label:'Assistant Preferences' },
+        { id:'tokens', href:'#/user-settings/tokens', icon:'🔑', label:'Tokens' }
+    ];
+
     function renderUserSettingsPage(){
         queuePageInit(initUserSettingsPage);
+        var activeTab = getActiveSettingsTab();
+        var subContent = '';
+        if(activeTab === 'preferences'){
+            subContent = `
+        <section class='card settings-card' id='assistantPreferencesSection'>${renderLoadingPanel('Loading assistant preferences…')}</section>
+        <section class='card settings-card' id='addPreferenceSection'>${renderLoadingPanel('Loading preference form…')}</section>
+        <div class='section-stack' id='preferenceGroups'>${renderLoadingPanel('Loading preferences…')}</div>`;
+        } else if(activeTab === 'tokens'){
+            subContent = `
+        <section class='card settings-card' id='tokenManagementSection'>${renderLoadingPanel('Loading tokens…')}</section>`;
+        } else {
+            subContent = `
+        <section class='card settings-card' id='profileSection'>${renderLoadingPanel('Loading profile…')}</section>`;
+        }
+
         return `
 <!-- Page: User Settings -->
 <section class='page-shell'>
     <header class='page-header'>
         <div>
             <h1>User Settings</h1>
-            <p>Maintain your profile, manage stored preferences, and add assistant-specific defaults that help OpenVEPA work autonomously.</p>
+            <p>Maintain your profile, manage API tokens, and add assistant-specific defaults that help OpenVEPA work autonomously.</p>
         </div>
         <span class='pill'>Personalization</span>
     </header>
     <div id='userSettingsStatus'></div>
-    <div class='settings-grid'>
-        <section class='card settings-card' id='profileSection'>${renderLoadingPanel('Loading profile…')}</section>
-        <section class='card settings-card' id='assistantPreferencesSection'>${renderLoadingPanel('Loading assistant preferences…')}</section>
+    ${renderTabBar(userSettingsTabs, activeTab)}
+    <div id='settingsContent'>
+        ${subContent}
     </div>
-    <section class='card settings-card' id='addPreferenceSection'>${renderLoadingPanel('Loading preference form…')}</section>
-    <div class='section-stack' id='preferenceGroups'>${renderLoadingPanel('Loading preferences…')}</div>
 </section>`;
     }
 
     function initUserSettingsPage(){
-        renderUserSettingsSections();
-        if(!dashboardState.preferences.groups){
-            loadPreferences(false);
+        var activeTab = getActiveSettingsTab();
+        if(activeTab === 'profile' || activeTab === 'preferences'){
+            if(!dashboardState.preferences.groups){
+                loadPreferences(false);
+            }
         }
+        if(activeTab === 'tokens'){
+            if(!dashboardState.tokens.items){
+                loadTokens(false);
+            }
+        }
+        renderUserSettingsSections();
     }
 
     function loadPreferences(force){
@@ -3565,22 +4288,446 @@ ${banner}
         });
     }
 
-    function getAssistantQuickAddDefinitions(){
-        var timeZone = 'UTC';
+    function loadTokens(force){
+        var state = dashboardState.tokens;
+        if(state.isLoading){
+            return Promise.resolve();
+        }
+        if(!force && state.items){
+            renderUserSettingsSections();
+            return Promise.resolve();
+        }
+
+        state.isLoading = true;
+        state.error = '';
+        renderUserSettingsSections();
+
+        return apiRequest('/api/tokens').then(function(payload){
+            state.items = sortTokenItems(payload && payload.tokens ? payload.tokens : []);
+        }).catch(function(error){
+            state.error = error.message;
+        }).finally(function(){
+            state.isLoading = false;
+            renderUserSettingsSections();
+        });
+    }
+
+    function sortTokenItems(tokens){
+        return (tokens || []).slice().sort(function(left, right){
+            return toSessionTime(right && right.createdAt) - toSessionTime(left && left.createdAt);
+        });
+    }
+
+    function countActiveTokens(tokens){
+        var count = 0;
+        for(var i=0;i<(tokens || []).length;i++){
+            if(!(tokens[i] && tokens[i].isRevoked)){
+                count++;
+            }
+        }
+        return count;
+    }
+
+    function getMostRecentlyUsedToken(tokens){
+        var activeTokens = (tokens || []).filter(function(token){
+            return token && !token.isRevoked;
+        });
+        if(!activeTokens.length){
+            return null;
+        }
+
+        activeTokens.sort(function(left, right){
+            var leftUsed = toSessionTime(left && left.lastUsedAt);
+            var rightUsed = toSessionTime(right && right.lastUsedAt);
+            if(rightUsed !== leftUsed){
+                return rightUsed - leftUsed;
+            }
+            return toSessionTime(right && right.createdAt) - toSessionTime(left && left.createdAt);
+        });
+
+        return activeTokens[0];
+    }
+
+    function getCurrentTokenIndicator(tokens){
+        var storedTokenId = getStoredTokenId();
+        var items = tokens || [];
+        if(storedTokenId){
+            for(var i=0;i<items.length;i++){
+                if(items[i] && items[i].id === storedTokenId){
+                    return {
+                        token:items[i],
+                        exact:true,
+                        html:`Currently using: <strong>${escapeHtml(items[i].name || 'Unnamed token')}</strong> <span class='field-hint'>Matched from this browser's saved token metadata.</span>`
+                    };
+                }
+            }
+        }
+
+        var likelyToken = getMostRecentlyUsedToken(items);
+        if(!likelyToken){
+            return null;
+        }
+
+        return {
+            token:likelyToken,
+            exact:false,
+            html:`Currently using: <strong>${escapeHtml(likelyToken.name || 'Unnamed token')}</strong> <span class='field-hint'>Best guess based on the most recent token activity.</span>`
+        };
+    }
+
+    function renderTokenCreateResult(){
+        var result = dashboardState.tokens.createResult;
+        if(!result || !result.token){
+            return '';
+        }
+
+        return `
+<div class='token-created-box'>
+    <div class='token-created-header'>
+        <div>
+            <h3>New token created</h3>
+            <p class='helper-text'>${escapeHtml(result.name || 'Token')}</p>
+        </div>
+        <button type='button' class='secondary-button' data-token-action='copy-created'>Copy</button>
+    </div>
+    <p class='token-warning'>⚠️ Save this token now. It will not be shown again.</p>
+    <pre class='detail-code token-secret'>${escapeHtml(result.token)}</pre>
+</div>`;
+    }
+
+    function renderTokenTable(tokens, currentTokenId){
+        if(!tokens || !tokens.length){
+            return renderSettingsEmptyState('No tokens yet.', 'Create a token above so this browser, the CLI, or automation can authenticate.', '', '');
+        }
+
+        var rows = '';
+        for(var i=0;i<tokens.length;i++){
+            var token = tokens[i] || {};
+            var isCurrent = currentTokenId && token.id === currentTokenId;
+            var statusLabel = token.isRevoked ? 'Revoked' : (isCurrent ? 'Active · Current' : 'Active');
+            var statusClass = token.isRevoked ? 'is-revoked' : 'is-active';
+            var actionLabel = token.isRevoked
+                ? 'Revoked'
+                : (dashboardState.tokens.revokingId === token.id ? 'Revoking…' : 'Revoke');
+            var actionDisabled = token.isRevoked || dashboardState.tokens.revokingId === token.id || dashboardState.tokens.isCreating;
+            rows += `
+<tr>
+    <td>${escapeHtml(token.name || 'Unnamed token')}</td>
+    <td><span title='${escapeHtml(formatSessionDateTime(token.createdAt))}'>${escapeHtml(formatSessionDate(token.createdAt))}</span></td>
+    <td>${token.lastUsedAt ? `<span title='${escapeHtml(formatSessionDateTime(token.lastUsedAt))}'>${escapeHtml(formatSessionDate(token.lastUsedAt))}</span>` : 'Never'}</td>
+    <td><span class='token-status-badge ${statusClass}'>${escapeHtml(statusLabel)}</span></td>
+    <td>
+        <div class='token-table-actions'>
+            <button type='button' class='secondary-button' data-token-action='revoke' data-token-id='${escapeHtmlAttribute(token.id || '')}' ${actionDisabled ? 'disabled' : ''}>${escapeHtml(actionLabel)}</button>
+        </div>
+    </td>
+</tr>`;
+        }
+
+        return `
+<div class='table-shell'>
+    <table class='preference-table'>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Created</th>
+                <th>Last Used</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>${rows}
+        </tbody>
+    </table>
+</div>`;
+    }
+
+    function renderTokenManagementSection(){
+        var state = dashboardState.tokens;
+        if(state.isLoading && !state.items){
+            return renderLoadingPanel('Loading tokens…');
+        }
+
+        var tokens = sortTokenItems(state.items || []);
+        var currentIndicator = getCurrentTokenIndicator(tokens);
+        var activeCount = countActiveTokens(tokens);
+        var revokedCount = Math.max(0, tokens.length - activeCount);
+        var currentTokenId = currentIndicator && currentIndicator.exact && currentIndicator.token ? currentIndicator.token.id : '';
+        var banner = renderStatusBanner(state.error, 'error') || renderStatusBanner(state.message, 'success');
+
+        return `
+<div class='token-management-layout'>
+    <div class='section-heading'>
+        <div>
+            <h2>Token Management</h2>
+            <p>Create browser or CLI tokens, review activity, and revoke access when a token is no longer needed.</p>
+        </div>
+        <div class='settings-actions'>
+            <button type='button' class='secondary-button' data-token-action='refresh' ${state.isLoading || state.isCreating || !!state.revokingId ? 'disabled' : ''}>Refresh</button>
+        </div>
+    </div>
+    ${banner}
+    ${currentIndicator ? `<div class='status-banner is-info'>${currentIndicator.html}</div>` : ''}
+    <div class='token-management-top'>
+        <section class='detail-card'>
+            <h3>Create new token</h3>
+            <form id='tokenCreateForm' class='token-management-form'>
+                <label class='field' for='tokenNameInput'>
+                    <span>Name</span>
+                    <input id='tokenNameInput' class='control' type='text' maxlength='120' placeholder='web-default' ${state.isCreating || !!state.revokingId ? 'disabled' : ''}>
+                </label>
+                <div class='settings-actions'>
+                    <button type='submit' class='primary-button' ${state.isCreating || !!state.revokingId ? 'disabled' : ''}>${state.isCreating ? 'Creating…' : 'Create Token'}</button>
+                </div>
+                <p class='helper-text'>Use clear names like <span class='inline-code'>web-default</span>, <span class='inline-code'>cli-token</span>, or <span class='inline-code'>ci-runner</span>.</p>
+            </form>
+            ${renderTokenCreateResult()}
+        </section>
+        <section class='detail-card'>
+            <h3>Token summary</h3>
+            <div class='token-summary-grid'>
+                <div class='token-summary-card'>
+                    <span class='field-hint'>Active</span>
+                    <strong>${escapeHtml(formatNumber(activeCount))}</strong>
+                </div>
+                <div class='token-summary-card'>
+                    <span class='field-hint'>Revoked</span>
+                    <strong>${escapeHtml(formatNumber(revokedCount))}</strong>
+                </div>
+                <div class='token-summary-card'>
+                    <span class='field-hint'>Total</span>
+                    <strong>${escapeHtml(formatNumber(tokens.length))}</strong>
+                </div>
+            </div>
+            <p class='helper-text'>OpenVEPA shows plaintext token values only once. Copy them now and store them securely.</p>
+        </section>
+    </div>
+    ${renderTokenTable(tokens, currentTokenId)}
+</div>`;
+    }
+
+    function scheduleTokenRevealHide(){
+        var state = dashboardState.tokens;
+        if(state.revealTimeoutId){
+            window.clearTimeout(state.revealTimeoutId);
+            state.revealTimeoutId = 0;
+        }
+        if(!state.createResult){
+            return;
+        }
+
+        state.revealTimeoutId = window.setTimeout(function(){
+            dashboardState.tokens.createResult = null;
+            dashboardState.tokens.message = 'Token value hidden after 60 seconds.';
+            renderUserSettingsSections();
+        }, 60000);
+    }
+
+    function createTokenFromSettings(){
+        var state = dashboardState.tokens;
+        if(state.isCreating){
+            return;
+        }
+
+        var nameInput = document.getElementById('tokenNameInput');
+        var name = nameInput ? nameInput.value.trim() : '';
+        if(!name){
+            state.error = 'Token name is required.';
+            renderUserSettingsSections();
+            return;
+        }
+
+        state.isCreating = true;
+        state.error = '';
+        state.message = '';
+        renderUserSettingsSections();
+
+        apiRequest('/api/tokens', {
+            method:'POST',
+            body:JSON.stringify({ name:name })
+        }).then(function(result){
+            state.createResult = result && result.token ? {
+                tokenId:result.tokenId || '',
+                token:result.token,
+                name:result.name || name
+            } : null;
+            state.message = 'Token created.';
+            scheduleTokenRevealHide();
+            return loadTokens(true);
+        }).catch(function(error){
+            state.error = error.message;
+        }).finally(function(){
+            state.isCreating = false;
+            renderUserSettingsSections();
+        });
+    }
+
+    function revokeTokenFromSettings(tokenId){
+        var state = dashboardState.tokens;
+        if(!tokenId || state.revokingId){
+            return;
+        }
+
+        var tokens = state.items || [];
+        var token = null;
+        for(var i=0;i<tokens.length;i++){
+            if(tokens[i] && tokens[i].id === tokenId){
+                token = tokens[i];
+                break;
+            }
+        }
+        if(!token || token.isRevoked){
+            return;
+        }
+        if(countActiveTokens(tokens) <= 1){
+            state.error = 'You cannot revoke the only active token. Create another token first.';
+            renderUserSettingsSections();
+            return;
+        }
+        if(!window.confirm('Revoke token "' + (token.name || token.id || 'token') + '"?')){
+            return;
+        }
+
+        state.revokingId = tokenId;
+        state.error = '';
+        state.message = '';
+        renderUserSettingsSections();
+
+        apiRequest('/api/tokens/' + encodeURIComponent(tokenId), {
+            method:'DELETE'
+        }).then(function(){
+            if(getStoredTokenId() === tokenId){
+                storeTokenId('');
+            }
+            state.message = 'Token revoked.';
+            return loadTokens(true);
+        }).catch(function(error){
+            state.error = error.message;
+        }).finally(function(){
+            state.revokingId = '';
+            renderUserSettingsSections();
+        });
+    }
+
+    function copyCreatedToken(){
+        var state = dashboardState.tokens;
+        var tokenValue = state.createResult && state.createResult.token ? state.createResult.token : '';
+        if(!tokenValue){
+            return;
+        }
+
+        if(navigator.clipboard && navigator.clipboard.writeText){
+            navigator.clipboard.writeText(tokenValue).then(function(){
+                showToast('Token copied.');
+            }).catch(function(){
+                showToast('Unable to copy token.', true);
+            });
+            return;
+        }
+
+        var tempInput = document.createElement('textarea');
+        tempInput.value = tokenValue;
+        tempInput.setAttribute('readonly', 'readonly');
+        tempInput.style.position = 'absolute';
+        tempInput.style.left = '-9999px';
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        try{
+            document.execCommand('copy');
+            showToast('Token copied.');
+        } catch(error){
+            showToast('Unable to copy token.', true);
+        } finally {
+            document.body.removeChild(tempInput);
+        }
+    }
+
+    function handleTokenManagementClick(event){
+        var actionButton = event.target.closest('[data-token-action]');
+        if(!actionButton){
+            return;
+        }
+
+        var action = actionButton.getAttribute('data-token-action');
+        if(action === 'refresh'){
+            loadTokens(true);
+            return;
+        }
+        if(action === 'copy-created'){
+            copyCreatedToken();
+            return;
+        }
+        if(action === 'revoke'){
+            revokeTokenFromSettings(actionButton.getAttribute('data-token-id'));
+        }
+    }
+
+    function detectBrowserTimezone(){
         try{
             var resolved = Intl.DateTimeFormat().resolvedOptions();
             if(resolved && resolved.timeZone){
-                timeZone = resolved.timeZone;
+                return resolved.timeZone;
             }
-        } catch(error){
-        }
+        } catch(error){}
+        return 'UTC';
+    }
 
-        return [
-            { key:'assistant.riskTolerance', value:'balanced', category:'assistant', label:'Risk tolerance', detail:'balanced' },
-            { key:'assistant.communicationStyle', value:'concise', category:'assistant', label:'Communication style', detail:'concise' },
-            { key:'user.timezone', value:timeZone, category:'locale', label:'Timezone', detail:timeZone },
-            { key:'user.preferredLanguage', value:navigator.language || 'en-US', category:'locale', label:'Preferred language', detail:navigator.language || 'en-US' }
+    function renderTimezoneSelect(currentValue, isDisabled){
+        var timezones = [
+            'UTC',
+            'America/New_York','America/Chicago','America/Denver','America/Los_Angeles',
+            'America/Toronto','America/Vancouver','America/Sao_Paulo','America/Mexico_City',
+            'Europe/London','Europe/Paris','Europe/Berlin','Europe/Amsterdam','Europe/Madrid',
+            'Europe/Rome','Europe/Zurich','Europe/Stockholm','Europe/Warsaw','Europe/Moscow',
+            'Asia/Tokyo','Asia/Shanghai','Asia/Hong_Kong','Asia/Singapore','Asia/Seoul',
+            'Asia/Kolkata','Asia/Dubai','Asia/Bangkok',
+            'Australia/Sydney','Australia/Melbourne','Pacific/Auckland',
+            'Africa/Cairo','Africa/Johannesburg','Africa/Lagos'
         ];
+        var options = "<option value=''>— Not set —</option>";
+        for(var i=0;i<timezones.length;i++){
+            var tz = timezones[i];
+            var selected = tz === currentValue ? ' selected' : '';
+            options += "<option value='" + escapeHtml(tz) + "'" + selected + ">" + escapeHtml(tz) + "</option>";
+        }
+        if(currentValue && timezones.indexOf(currentValue) === -1){
+            options += "<option value='" + escapeHtml(currentValue) + "' selected>" + escapeHtml(currentValue) + "</option>";
+        }
+        return "<select id='profileTimezoneInput' class='control'" + (isDisabled ? ' disabled' : '') + ">" + options + "</select>";
+    }
+
+    function renderLanguageSelect(currentValue, isDisabled){
+        var languages = [
+            { code:'en-US', label:'English (US)' },
+            { code:'en-GB', label:'English (UK)' },
+            { code:'es-ES', label:'Spanish' },
+            { code:'fr-FR', label:'French' },
+            { code:'de-DE', label:'German' },
+            { code:'it-IT', label:'Italian' },
+            { code:'pt-BR', label:'Portuguese (Brazil)' },
+            { code:'nl-NL', label:'Dutch' },
+            { code:'sv-SE', label:'Swedish' },
+            { code:'pl-PL', label:'Polish' },
+            { code:'ru-RU', label:'Russian' },
+            { code:'ja-JP', label:'Japanese' },
+            { code:'zh-CN', label:'Chinese (Simplified)' },
+            { code:'zh-TW', label:'Chinese (Traditional)' },
+            { code:'ko-KR', label:'Korean' },
+            { code:'ar-SA', label:'Arabic' },
+            { code:'hi-IN', label:'Hindi' }
+        ];
+        var options = "<option value=''>— Not set —</option>";
+        var matched = false;
+        for(var i=0;i<languages.length;i++){
+            var lang = languages[i];
+            var selected = lang.code === currentValue ? ' selected' : '';
+            if(selected){ matched = true; }
+            options += "<option value='" + escapeHtml(lang.code) + "'" + selected + ">" + escapeHtml(lang.label) + "</option>";
+        }
+        if(currentValue && !matched){
+            options += "<option value='" + escapeHtml(currentValue) + "' selected>" + escapeHtml(currentValue) + "</option>";
+        }
+        return "<select id='profileLanguageInput' class='control'" + (isDisabled ? ' disabled' : '') + ">" + options + "</select>";
     }
 
     function renderProfileSection(){
@@ -3591,12 +4738,19 @@ ${banner}
 
         var nameEntry = findPreferenceEntry(state.groups, 'user.name');
         var emailEntry = findPreferenceEntry(state.groups, 'user.email');
+        var timezoneEntry = findPreferenceEntry(state.groups, 'user.timezone');
+        var langEntry = findPreferenceEntry(state.groups, 'user.preferredLanguage');
+
+        var detectedTz = detectBrowserTimezone();
+        var currentTz = timezoneEntry ? timezoneEntry.value : detectedTz;
+        var currentLang = langEntry ? langEntry.value : (navigator.language || 'en-US');
+
         return `
 <form id='profileForm'>
     <div class='section-heading'>
         <div>
             <h2>Profile</h2>
-            <p>Stored as <span class='inline-code'>user.name</span> and <span class='inline-code'>user.email</span> preferences.</p>
+            <p>Your identity and locale preferences used across OpenVEPA.</p>
         </div>
         <div class='settings-actions'>
             <button type='submit' class='primary-button' ${state.isMutating ? 'disabled' : ''}>${state.isMutating ? 'Saving…' : 'Save profile'}</button>
@@ -3610,34 +4764,73 @@ ${banner}
         <span>Email</span>
         <input id='profileEmailInput' class='control' type='email' value='${escapeHtml(emailEntry ? emailEntry.value : '')}' placeholder='name@example.com' ${state.isMutating ? 'disabled' : ''}>
     </div>
-    <p class='helper-text'>Leave a field blank to remove that stored value.</p>
+    <div class='field'>
+        <span>Timezone</span>
+        ${renderTimezoneSelect(currentTz, state.isMutating)}
+    </div>
+    <div class='field'>
+        <span>Preferred Language</span>
+        ${renderLanguageSelect(currentLang, state.isMutating)}
+    </div>
+    <p class='helper-text'>Leave a field blank to remove that stored value. Timezone auto-detects from your browser if not set.</p>
 </form>`;
     }
 
     function renderAssistantPreferencesSection(){
         var state = dashboardState.preferences;
-        var quickAdds = getAssistantQuickAddDefinitions();
-        var buttonsHtml = '';
-        for(var i=0;i<quickAdds.length;i++){
-            var item = quickAdds[i];
-            buttonsHtml += `
-<button type='button' class='secondary-button quick-add-button' data-quick-key='${escapeHtml(item.key)}' data-quick-value='${escapeHtml(item.value)}' data-quick-category='${escapeHtml(item.category)}' ${state.isMutating ? 'disabled' : ''}>
-    <strong>${escapeHtml(item.label)}</strong>
-    <span class='field-hint'>${escapeHtml(item.detail)}</span>
-</button>`;
+        if(state.isLoading && !state.groups){
+            return renderLoadingPanel('Loading assistant preferences…');
         }
 
+        var riskEntry = findPreferenceEntry(state.groups, 'assistant.riskTolerance');
+        var commEntry = findPreferenceEntry(state.groups, 'assistant.communicationStyle');
+        var autonomyEntry = findPreferenceEntry(state.groups, 'assistant.autonomyLevel');
+        var currentRisk = riskEntry ? riskEntry.value : '';
+        var currentComm = commEntry ? commEntry.value : '';
+        var currentAutonomy = autonomyEntry ? autonomyEntry.value : '';
+
         return `
-<div class='section-heading'>
-    <div>
-        <h2>Assistant preferences</h2>
-        <p>These help the assistant act autonomously with less clarification and better defaults.</p>
+<form id='assistantPreferencesForm'>
+    <div class='section-heading'>
+        <div>
+            <h2>Assistant Preferences</h2>
+            <p>These help the assistant act autonomously with less clarification and better defaults.</p>
+        </div>
+        <div class='settings-actions'>
+            <button type='submit' class='primary-button' ${state.isMutating ? 'disabled' : ''}>${state.isMutating ? 'Saving…' : 'Save preferences'}</button>
+        </div>
     </div>
-    <span class='badge is-accent'>Quick add</span>
-</div>
-<p class='assistant-note'>Examples include risk tolerance, communication style, timezone, and preferred language. Use the buttons below to store common defaults instantly.</p>
-<div class='quick-add-grid'>${buttonsHtml}
-</div>`;
+    <div class='field'>
+        <span>Risk Tolerance</span>
+        <select id='assistantRiskInput' class='control' ${state.isMutating ? 'disabled' : ''}>
+            <option value=''>— Not set —</option>
+            <option value='conservative'${currentRisk === 'conservative' ? ' selected' : ''}>Conservative</option>
+            <option value='balanced'${currentRisk === 'balanced' ? ' selected' : ''}>Balanced</option>
+            <option value='aggressive'${currentRisk === 'aggressive' ? ' selected' : ''}>Aggressive</option>
+        </select>
+    </div>
+    <div class='field'>
+        <span>Communication Style</span>
+        <select id='assistantCommunicationInput' class='control' ${state.isMutating ? 'disabled' : ''}>
+            <option value=''>— Not set —</option>
+            <option value='professional'${currentComm === 'professional' ? ' selected' : ''}>Professional</option>
+            <option value='friendly'${currentComm === 'friendly' ? ' selected' : ''}>Friendly</option>
+            <option value='concise'${currentComm === 'concise' ? ' selected' : ''}>Concise</option>
+            <option value='detailed'${currentComm === 'detailed' ? ' selected' : ''}>Detailed</option>
+            <option value='technical'${currentComm === 'technical' ? ' selected' : ''}>Technical</option>
+        </select>
+    </div>
+    <div class='field'>
+        <span>Autonomy Level</span>
+        <select id='assistantAutonomyInput' class='control' ${state.isMutating ? 'disabled' : ''}>
+            <option value=''>— Not set —</option>
+            <option value='ask-always'${currentAutonomy === 'ask-always' ? ' selected' : ''}>Ask always</option>
+            <option value='ask-important'${currentAutonomy === 'ask-important' ? ' selected' : ''}>Ask for important decisions</option>
+            <option value='act-autonomously'${currentAutonomy === 'act-autonomously' ? ' selected' : ''}>Act autonomously</option>
+            <option value='full-autonomy'${currentAutonomy === 'full-autonomy' ? ' selected' : ''}>Full autonomy</option>
+        </select>
+    </div>
+</form>`;
     }
 
     function renderAddPreferenceSection(){
@@ -3783,44 +4976,73 @@ ${banner}
     }
 
     function renderUserSettingsSections(){
-        var state = dashboardState.preferences;
+        var prefState = dashboardState.preferences;
+        var tokenState = dashboardState.tokens;
+
         var statusHost = document.getElementById('userSettingsStatus');
+        if(statusHost){
+            var prefBanner = renderStatusBanner(prefState.error, 'error') || renderStatusBanner(prefState.message, 'success');
+            var tokenBanner = renderStatusBanner(tokenState.error, 'error') || renderStatusBanner(tokenState.message, 'success');
+            statusHost.innerHTML = prefBanner || tokenBanner;
+        }
+
         var profileSection = document.getElementById('profileSection');
+        if(profileSection){
+            profileSection.innerHTML = renderProfileSection();
+            var profileForm = document.getElementById('profileForm');
+            if(profileForm){
+                profileForm.onsubmit = function(event){
+                    event.preventDefault();
+                    saveProfileSettings();
+                };
+            }
+        }
+
         var assistantSection = document.getElementById('assistantPreferencesSection');
+        if(assistantSection){
+            assistantSection.innerHTML = renderAssistantPreferencesSection();
+            var assistantForm = document.getElementById('assistantPreferencesForm');
+            if(assistantForm){
+                assistantForm.onsubmit = function(event){
+                    event.preventDefault();
+                    saveAssistantPreferences();
+                };
+            }
+        }
+
+        var tokenManagementSection = document.getElementById('tokenManagementSection');
+        if(tokenManagementSection){
+            tokenManagementSection.innerHTML = renderTokenManagementSection();
+            var tokenCreateForm = document.getElementById('tokenCreateForm');
+            if(tokenCreateForm){
+                tokenCreateForm.onsubmit = function(event){
+                    event.preventDefault();
+                    createTokenFromSettings();
+                };
+            }
+            tokenManagementSection.onclick = handleTokenManagementClick;
+        }
+
         var addPreferenceSection = document.getElementById('addPreferenceSection');
+        if(addPreferenceSection){
+            addPreferenceSection.innerHTML = renderAddPreferenceSection();
+            var addPreferenceForm = document.getElementById('addPreferenceForm');
+            if(addPreferenceForm){
+                addPreferenceForm.onsubmit = function(event){
+                    event.preventDefault();
+                    saveNewPreference();
+                };
+            }
+        }
+
         var preferenceGroups = document.getElementById('preferenceGroups');
-        if(!statusHost || !profileSection || !assistantSection || !addPreferenceSection || !preferenceGroups){
-            return;
-        }
-
-        statusHost.innerHTML = renderStatusBanner(state.error, 'error') || renderStatusBanner(state.message, 'success');
-        profileSection.innerHTML = renderProfileSection();
-        assistantSection.innerHTML = renderAssistantPreferencesSection();
-        addPreferenceSection.innerHTML = renderAddPreferenceSection();
-        preferenceGroups.innerHTML = renderPreferenceGroups();
-
-        var profileForm = document.getElementById('profileForm');
-        if(profileForm){
-            profileForm.onsubmit = function(event){
-                event.preventDefault();
-                saveProfileSettings();
-            };
-        }
-
-        var addPreferenceForm = document.getElementById('addPreferenceForm');
-        if(addPreferenceForm){
-            addPreferenceForm.onsubmit = function(event){
-                event.preventDefault();
-                saveNewPreference();
-            };
-        }
-
-        assistantSection.onclick = handleAssistantPreferencesClick;
-        preferenceGroups.onclick = handlePreferenceGroupsClick;
-
-        var reloadButton = preferenceGroups.querySelector('[data-preferences-action="reload"]');
-        if(reloadButton){
-            reloadButton.onclick = function(){ loadPreferences(true); };
+        if(preferenceGroups){
+            preferenceGroups.innerHTML = renderPreferenceGroups();
+            preferenceGroups.onclick = handlePreferenceGroupsClick;
+            var reloadButton = preferenceGroups.querySelector('[data-preferences-action="reload"]');
+            if(reloadButton){
+                reloadButton.onclick = function(){ loadPreferences(true); };
+            }
         }
     }
 
@@ -3828,6 +5050,8 @@ ${banner}
         var state = dashboardState.preferences;
         var nameInput = document.getElementById('profileNameInput');
         var emailInput = document.getElementById('profileEmailInput');
+        var timezoneInput = document.getElementById('profileTimezoneInput');
+        var languageInput = document.getElementById('profileLanguageInput');
         if(!nameInput || !emailInput){
             return;
         }
@@ -3835,8 +5059,12 @@ ${banner}
         var operations = [];
         var nameValue = nameInput.value.trim();
         var emailValue = emailInput.value.trim();
+        var timezoneValue = timezoneInput ? timezoneInput.value : '';
+        var languageValue = languageInput ? languageInput.value : '';
         var existingName = findPreferenceEntry(state.groups, 'user.name');
         var existingEmail = findPreferenceEntry(state.groups, 'user.email');
+        var existingTimezone = findPreferenceEntry(state.groups, 'user.timezone');
+        var existingLanguage = findPreferenceEntry(state.groups, 'user.preferredLanguage');
 
         if(nameValue){
             operations.push(upsertPreference('user.name', nameValue, 'personal'));
@@ -3848,6 +5076,18 @@ ${banner}
             operations.push(upsertPreference('user.email', emailValue, 'personal'));
         } else if(existingEmail){
             operations.push(deletePreference('user.email'));
+        }
+
+        if(timezoneValue){
+            operations.push(upsertPreference('user.timezone', timezoneValue, 'locale'));
+        } else if(existingTimezone){
+            operations.push(deletePreference('user.timezone'));
+        }
+
+        if(languageValue){
+            operations.push(upsertPreference('user.preferredLanguage', languageValue, 'locale'));
+        } else if(existingLanguage){
+            operations.push(deletePreference('user.preferredLanguage'));
         }
 
         if(operations.length === 0){
@@ -3884,18 +5124,48 @@ ${banner}
         }, 'Preference saved.');
     }
 
-    function handleAssistantPreferencesClick(event){
-        var button = event.target.closest('[data-quick-key]');
-        if(!button){
+    function saveAssistantPreferences(){
+        var state = dashboardState.preferences;
+        var riskInput = document.getElementById('assistantRiskInput');
+        var commInput = document.getElementById('assistantCommunicationInput');
+        var autonomyInput = document.getElementById('assistantAutonomyInput');
+
+        var operations = [];
+        var riskValue = riskInput ? riskInput.value : '';
+        var commValue = commInput ? commInput.value : '';
+        var autonomyValue = autonomyInput ? autonomyInput.value : '';
+        var existingRisk = findPreferenceEntry(state.groups, 'assistant.riskTolerance');
+        var existingComm = findPreferenceEntry(state.groups, 'assistant.communicationStyle');
+        var existingAutonomy = findPreferenceEntry(state.groups, 'assistant.autonomyLevel');
+
+        if(riskValue){
+            operations.push(upsertPreference('assistant.riskTolerance', riskValue, 'assistant'));
+        } else if(existingRisk){
+            operations.push(deletePreference('assistant.riskTolerance'));
+        }
+
+        if(commValue){
+            operations.push(upsertPreference('assistant.communicationStyle', commValue, 'assistant'));
+        } else if(existingComm){
+            operations.push(deletePreference('assistant.communicationStyle'));
+        }
+
+        if(autonomyValue){
+            operations.push(upsertPreference('assistant.autonomyLevel', autonomyValue, 'assistant'));
+        } else if(existingAutonomy){
+            operations.push(deletePreference('assistant.autonomyLevel'));
+        }
+
+        if(operations.length === 0){
+            state.error = '';
+            state.message = 'Assistant preferences are already up to date.';
+            renderUserSettingsSections();
             return;
         }
 
-        var key = button.getAttribute('data-quick-key');
-        var value = button.getAttribute('data-quick-value');
-        var category = button.getAttribute('data-quick-category');
         runPreferenceMutation(function(){
-            return upsertPreference(key, value, category);
-        }, 'Assistant preference saved.');
+            return Promise.all(operations);
+        }, 'Assistant preferences saved.');
     }
 
     function handlePreferenceGroupsClick(event){
@@ -4220,7 +5490,7 @@ ${banner}
 <section class="card sessions-empty-state sessions-empty-state-error">
     <div class="sessions-empty-icon" aria-hidden="true">⚠️</div>
     <h2>Unable to load sessions</h2>
-    <p>${escapeHtml(sessionsPageState.errorMessage)}</p>
+    <p>${renderMessageWithLinks(sessionsPageState.errorMessage)}</p>
     <div class="sessions-empty-actions">
         <button type="button" class="secondary-button" data-session-action="create">New Session</button>
     </div>
@@ -4300,7 +5570,9 @@ ${banner}
         }
 
         if(sessionsPageState.errorMessage){
-            feedback.textContent = sessionsPageState.errorMessage;
+            feedback.textContent = isTokenRecoveryMessage(sessionsPageState.errorMessage)
+                ? 'Token missing or expired. Use Home or User Settings to recover access.'
+                : sessionsPageState.errorMessage;
             return;
         }
 
@@ -4504,8 +5776,10 @@ ${banner}
             return payload.error;
         }
 
-        if(response && response.status === 401){
-            return 'Your session has expired. Sign in again and retry.';
+        if(response && (response.status === 401 || response.status === 403)){
+            storeToken('');
+            storeTokenId('');
+            return getTokenRecoveryMessage();
         }
 
         if(response && response.status === 501){
@@ -4546,14 +5820,14 @@ ${banner}
     }
 
     function getAuthHeaders(){
-        var token = localStorage.getItem(storageKeys.token);
+        var token = getAuthToken();
         return token ? { 'Authorization': 'Bearer ' + token } : {};
     }
 
     renderNavigation();
     syncSidebarState();
 
-    if(!routeMap[window.location.hash]){
+    if(!routeMap[window.location.hash] && window.location.hash.indexOf('#/user-settings') !== 0){
         window.location.hash = '#/home';
     } else {
         renderRoute();
