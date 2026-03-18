@@ -3335,7 +3335,7 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
             if(excludeNames && excludeNames.indexOf(provider) >= 0){
                 continue;
             }
-            html += '<option value=\\''+escapeHtml(provider)+'\\''+(provider === selectedProvider ? ' selected' : '')+'>'+escapeHtml(provider)+'</option>';
+            html += '<option value="'+escapeHtml(provider)+'"'+(provider === selectedProvider ? ' selected' : '')+'>'+escapeHtml(provider)+'</option>';
         }
         return html;
     }
@@ -3367,81 +3367,81 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         var defaultProvider = config.defaultProvider || 'unknown';
         var html = '';
 
-        html += '<div class=\\'section-heading\\'>';
+        html += '<div class="section-heading">';
         html += '<div>';
         html += '<h2>Configured providers</h2>';
         html += '<p>All configured LLM providers. The default provider is highlighted.</p>';
         html += '</div>';
-        html += '<div class=\\'settings-actions\\'>';
-        html += '<button type=\\'button\\' class=\\'secondary-button\\' id=\\'llmRefreshButton\\'' + (state.isSaving ? ' disabled' : '') + '>Refresh</button>';
-        html += '<button type=\\'button\\' class=\\'primary-button\\' id=\\'llmAddProviderButton\\'' + (state.isSaving ? ' disabled' : '') + '>Add Provider</button>';
+        html += '<div class="settings-actions">';
+        html += '<button type="button" class="secondary-button" id="llmRefreshButton"' + (state.isSaving ? ' disabled' : '') + '>Refresh</button>';
+        html += '<button type="button" class="primary-button" id="llmAddProviderButton"' + (state.isSaving ? ' disabled' : '') + '>Add Provider</button>';
         html += '</div>';
         html += '</div>';
         html += banner;
 
         if(state.addingProvider){
             var draft = state.addDraft || {name:llmProviders[0],modelId:'',endpoint:''};
-            html += '<div class=\\'provider-card\\' style=\\'border-color:var(--accent)\\'>';
-            html += '<div class=\\'section-heading\\'><div><h2>Add new provider</h2></div></div>';
-            html += '<div class=\\'field\\'>';
+            html += '<div class="provider-card" style="border-color:var(--accent)">';
+            html += '<div class="section-heading"><div><h2>Add new provider</h2></div></div>';
+            html += '<div class="field">';
             html += '<span>Provider</span>';
-            html += '<select id=\\'llmNewProviderSelect\\' class=\\'control\\'' + (state.isSaving ? ' disabled' : '') + '>' + renderLlmProviderOptions(draft.name, getConfiguredProviderNames()) + '</select>';
+            html += '<select id="llmNewProviderSelect" class="control"' + (state.isSaving ? ' disabled' : '') + '>' + renderLlmProviderOptions(draft.name, getConfiguredProviderNames()) + '</select>';
             html += '</div>';
-            html += '<div class=\\'field\\'>';
+            html += '<div class="field">';
             html += '<span>Model</span>';
-            html += '<input id=\\'llmNewModelInput\\' class=\\'control\\' type=\\'text\\' value=\\''+escapeHtml(draft.modelId)+'\\' placeholder=\\'model-id\\'' + (state.isSaving ? ' disabled' : '') + '>';
+            html += '<input id="llmNewModelInput" class="control" type="text" value="'+escapeHtml(draft.modelId)+'" placeholder="model-id"' + (state.isSaving ? ' disabled' : '') + '>';
             html += '</div>';
-            html += '<div class=\\'field\\'>';
+            html += '<div class="field">';
             html += '<span>Endpoint</span>';
-            html += '<input id=\\'llmNewEndpointInput\\' class=\\'control\\' type=\\'url\\' value=\\''+escapeHtml(draft.endpoint)+'\\' placeholder=\\'https://api.example.com/v1\\'' + (state.isSaving ? ' disabled' : '') + '>';
+            html += '<input id="llmNewEndpointInput" class="control" type="url" value="'+escapeHtml(draft.endpoint)+'" placeholder="https://api.example.com/v1"' + (state.isSaving ? ' disabled' : '') + '>';
             html += '</div>';
-            html += '<div class=\\'provider-actions\\'>';
-            html += '<button type=\\'button\\' class=\\'secondary-button\\' id=\\'llmCancelAddButton\\'' + (state.isSaving ? ' disabled' : '') + '>Cancel</button>';
-            html += '<button type=\\'button\\' class=\\'primary-button\\' id=\\'llmSaveAddButton\\'' + (state.isSaving ? ' disabled' : '') + '>' + (state.isSaving ? 'Saving…' : 'Add') + '</button>';
+            html += '<div class="provider-actions">';
+            html += '<button type="button" class="secondary-button" id="llmCancelAddButton"' + (state.isSaving ? ' disabled' : '') + '>Cancel</button>';
+            html += '<button type="button" class="primary-button" id="llmSaveAddButton"' + (state.isSaving ? ' disabled' : '') + '>' + (state.isSaving ? 'Saving…' : 'Add') + '</button>';
             html += '</div>';
             html += '</div>';
         }
 
-        html += '<div class=\\'provider-grid\\'>';
+        html += '<div class="provider-grid">';
         for(var i=0;i<providers.length;i++){
             var p = providers[i];
             var isDefault = p.name === defaultProvider;
             var isEditing = state.editingProvider === p.name;
 
-            html += '<div class=\\'provider-card' + (isDefault ? ' provider-default' : '') + '\\'>';
-            html += '<div class=\\'provider-header\\'>';
-            html += '<span class=\\'provider-name\\'>' + escapeHtml(p.name) + '</span>';
+            html += '<div class="provider-card' + (isDefault ? ' provider-default' : '') + '">';
+            html += '<div class="provider-header">';
+            html += '<span class="provider-name">' + escapeHtml(p.name) + '</span>';
             if(isDefault){
-                html += '<span class=\\'pill\\'>Default</span>';
+                html += '<span class="pill">Default</span>';
             }
             html += '</div>';
 
             if(isEditing){
                 var draft = state.editDraft || {modelId:p.modelId||'',endpoint:p.endpoint||''};
-                html += '<div class=\\'field\\'>';
+                html += '<div class="field">';
                 html += '<span>Model</span>';
-                html += '<input class=\\'control llm-edit-model\\' type=\\'text\\' value=\\''+escapeHtml(draft.modelId)+'\\' data-provider=\\''+escapeHtml(p.name)+'\\'' + (state.isSaving ? ' disabled' : '') + '>';
+                html += '<input class="control llm-edit-model" type="text" value="'+escapeHtml(draft.modelId)+'" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>';
                 html += '</div>';
-                html += '<div class=\\'field\\'>';
+                html += '<div class="field">';
                 html += '<span>Endpoint</span>';
-                html += '<input class=\\'control llm-edit-endpoint\\' type=\\'url\\' value=\\''+escapeHtml(draft.endpoint)+'\\' data-provider=\\''+escapeHtml(p.name)+'\\'' + (state.isSaving ? ' disabled' : '') + '>';
+                html += '<input class="control llm-edit-endpoint" type="url" value="'+escapeHtml(draft.endpoint)+'" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>';
                 html += '</div>';
-                html += '<div class=\\'provider-actions\\'>';
-                html += '<button type=\\'button\\' class=\\'secondary-button llm-cancel-edit\\'' + (state.isSaving ? ' disabled' : '') + '>Cancel</button>';
-                html += '<button type=\\'button\\' class=\\'primary-button llm-save-edit\\' data-provider=\\''+escapeHtml(p.name)+'\\'' + (state.isSaving ? ' disabled' : '') + '>' + (state.isSaving ? 'Saving…' : 'Save') + '</button>';
+                html += '<div class="provider-actions">';
+                html += '<button type="button" class="secondary-button llm-cancel-edit"' + (state.isSaving ? ' disabled' : '') + '>Cancel</button>';
+                html += '<button type="button" class="primary-button llm-save-edit" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>' + (state.isSaving ? 'Saving…' : 'Save') + '</button>';
                 html += '</div>';
             } else {
-                html += '<div class=\\'provider-meta\\'>';
-                html += '<div class=\\'provider-meta-row\\'><span class=\\'provider-meta-label\\'>Model</span><span class=\\'provider-meta-value\\'>' + escapeHtml(p.modelId || 'unknown') + '</span></div>';
-                html += '<div class=\\'provider-meta-row\\'><span class=\\'provider-meta-label\\'>Endpoint</span><span class=\\'provider-meta-value\\'>' + escapeHtml(p.endpoint || 'Not configured') + '</span></div>';
+                html += '<div class="provider-meta">';
+                html += '<div class="provider-meta-row"><span class="provider-meta-label">Model</span><span class="provider-meta-value">' + escapeHtml(p.modelId || 'unknown') + '</span></div>';
+                html += '<div class="provider-meta-row"><span class="provider-meta-label">Endpoint</span><span class="provider-meta-value">' + escapeHtml(p.endpoint || 'Not configured') + '</span></div>';
                 html += '</div>';
-                html += '<div class=\\'provider-actions\\'>';
+                html += '<div class="provider-actions">';
                 if(!isDefault){
-                    html += '<button type=\\'button\\' class=\\'secondary-button llm-set-default\\' data-provider=\\''+escapeHtml(p.name)+'\\'' + (state.isSaving ? ' disabled' : '') + '>Set as default</button>';
+                    html += '<button type="button" class="secondary-button llm-set-default" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>Set as default</button>';
                 }
-                html += '<button type=\\'button\\' class=\\'secondary-button llm-edit-provider\\' data-provider=\\''+escapeHtml(p.name)+'\\'' + (state.isSaving ? ' disabled' : '') + '>Edit</button>';
+                html += '<button type="button" class="secondary-button llm-edit-provider" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>Edit</button>';
                 if(providers.length > 1){
-                    html += '<button type=\\'button\\' class=\\'secondary-button llm-remove-provider\\' data-provider=\\''+escapeHtml(p.name)+'\\'' + (state.isSaving ? ' disabled' : '') + '>Remove</button>';
+                    html += '<button type="button" class="secondary-button llm-remove-provider" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>Remove</button>';
                 }
                 html += '</div>';
             }
@@ -3450,9 +3450,9 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         html += '</div>';
 
         if(providers.length === 0){
-            html += '<p class=\\'helper-text\\'>No providers configured. Use the Add Provider button to get started.</p>';
+            html += '<p class="helper-text">No providers configured. Use the Add Provider button to get started.</p>';
         } else {
-            html += '<p class=\\'helper-text\\'>Only non-sensitive configuration values are displayed. API keys remain hidden from the WebUI.</p>';
+            html += '<p class="helper-text">Only non-sensitive configuration values are displayed. API keys remain hidden from the WebUI.</p>';
         }
 
         return html;

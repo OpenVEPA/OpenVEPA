@@ -16,4 +16,5 @@ public sealed class LlmAuditLogEntity
     public string? SkillName { get; set; }
     public bool Success { get; set; }
     public string? ErrorMessage { get; set; }
+    public string? AgentName { get; set; }
 }

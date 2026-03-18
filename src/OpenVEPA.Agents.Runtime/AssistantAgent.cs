@@ -20,19 +20,19 @@ public sealed class AssistantAgent
 {
     private const int MaxToolCallIterations = 10;
 
-    private readonly IChatClient _chatClient;
+    private readonly IAgentChatClientFactory _chatClientFactory;
     private readonly ISkillRuntime _skillRuntime;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AssistantAgent> _logger;
 
     /// <summary>Initializes a new instance of the <see cref="AssistantAgent"/> class.</summary>
     public AssistantAgent(
-        IChatClient chatClient,
+        IAgentChatClientFactory chatClientFactory,
         ISkillRuntime skillRuntime,
         IConfiguration configuration,
         ILogger<AssistantAgent> logger)
     {
-        _chatClient = chatClient ?? throw new ArgumentNullException(nameof(chatClient));
+        _chatClientFactory = chatClientFactory ?? throw new ArgumentNullException(nameof(chatClientFactory));
         _skillRuntime = skillRuntime ?? throw new ArgumentNullException(nameof(skillRuntime));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -57,7 +57,8 @@ public sealed class AssistantAgent
             throw new ArgumentException("Message is required.", nameof(userMessage));
 
         var messages = BuildMessageList(agent, history, userMessage, preferences);
-        var tools = BuildToolList(agent, preferences);
+        var chatClient = _chatClientFactory.GetChatClient(agent);
+        var tools = BuildToolList(agent, chatClient, preferences);
         var options = CreateChatOptions(tools);
         var skillResults = new List<SkillResult>();
 
@@ -67,7 +68,7 @@ public sealed class AssistantAgent
                 "LLM call iteration {Iteration} for agent {Agent}",
                 iteration, agent.Name);
 
-            var response = await _chatClient.GetResponseAsync(messages, options, ct);
+            var response = await chatClient.GetResponseAsync(messages, options, ct);
             var functionCalls = ExtractFunctionCalls(response);
 
             if (functionCalls.Count == 0)
@@ -80,7 +81,7 @@ public sealed class AssistantAgent
 
             AppendResponseMessages(messages, response);
             await ExecuteToolCallsAsync(
-                functionCalls, messages, skillResults, preferences, ct);
+                functionCalls, messages, skillResults, chatClient, preferences, ct);
         }
 
         _logger.LogWarning(
@@ -109,7 +110,8 @@ public sealed class AssistantAgent
     {
         if (agent is null) throw new ArgumentNullException(nameof(agent));
 
-        var tools = BuildToolList(agent, preferences);
+        var chatClient = _chatClientFactory.GetChatClient(agent);
+        var tools = BuildToolList(agent, chatClient, preferences);
 
         // Phase 1: fall back to non-streaming when tools are configured.
         // This avoids the complexity of handling mid-stream tool calls.
@@ -122,7 +124,7 @@ public sealed class AssistantAgent
 
         var messages = BuildMessageList(agent, history, userMessage, preferences);
 
-        await foreach (var update in _chatClient.GetStreamingResponseAsync(messages, options: null, ct))
+        await foreach (var update in chatClient.GetStreamingResponseAsync(messages, options: null, ct))
         {
             if (update.Text is { Length: > 0 } text)
                 yield return text;
@@ -161,7 +163,7 @@ public sealed class AssistantAgent
         return builder.ToString().TrimEnd();
     }
 
-    private List<AITool> BuildToolList(AgentDefinition agent, UserPreferences? preferences)
+    private List<AITool> BuildToolList(AgentDefinition agent, IChatClient chatClient, UserPreferences? preferences)
     {
         var allSkills = _skillRuntime.ListSkills();
 
@@ -173,7 +175,7 @@ public sealed class AssistantAgent
             return [];
 
         var executionContext = new SkillExecutionContext(
-            _chatClient,
+            chatClient,
             _logger,
             _configuration,
             preferences,
@@ -212,6 +214,7 @@ public sealed class AssistantAgent
         List<FunctionCallContent> functionCalls,
         List<ChatMessage> messages,
         List<SkillResult> skillResults,
+        IChatClient chatClient,
         UserPreferences? preferences,
         CancellationToken ct)
     {
@@ -221,7 +224,7 @@ public sealed class AssistantAgent
                 "Executing tool call: {Name} (CallId: {CallId})",
                 call.Name, call.CallId);
 
-            var result = await InvokeSkillAsync(call, preferences, ct);
+            var result = await InvokeSkillAsync(call, chatClient, preferences, ct);
             skillResults.Add(result);
 
             var resultJson = FormatSkillResult(result);
@@ -233,11 +236,12 @@ public sealed class AssistantAgent
 
     private async Task<SkillResult> InvokeSkillAsync(
         FunctionCallContent call,
+        IChatClient chatClient,
         UserPreferences? preferences,
         CancellationToken ct)
     {
         var executionContext = new SkillExecutionContext(
-            _chatClient,
+            chatClient,
             _logger,
             _configuration,
             preferences,

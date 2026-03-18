@@ -35,13 +35,26 @@ public sealed class AgentMdParser
         var llmRequirements = ParseLlmRequirements(metadata.GetValueOrDefault("openvepa-llm-requirements"));
         var systemPrompt = BuildSystemPrompt(sections);
 
+        var priority = ParsePriority(metadata);
+        var triggers = ParseNullableStringList(metadata.GetValueOrDefault("openvepa-triggers"));
+        var restrictions = ParseNullableStringList(metadata.GetValueOrDefault("openvepa-restrictions"));
+        var llmConfig = ParseLlmConfig(metadata.GetValueOrDefault("openvepa-llm"));
+        var permissions = ParsePermissions(metadata.GetValueOrDefault("openvepa-permissions"));
+        var tokenBudget = ParseTokenBudget(metadata.GetValueOrDefault("openvepa-token-budget"));
+
         return new AgentDefinition(
             Name: name,
             Description: description,
             SystemPrompt: systemPrompt,
             Skills: skills,
             AutonomyLevel: autonomyLevel,
-            LlmRequirements: llmRequirements);
+            LlmRequirements: llmRequirements,
+            LlmConfig: llmConfig,
+            Restrictions: restrictions,
+            Permissions: permissions,
+            Triggers: triggers,
+            Priority: priority,
+            TokenBudget: tokenBudget);
     }
 
     private static (string Frontmatter, string Body) SplitFrontmatter(string content)
@@ -146,6 +159,175 @@ public sealed class AgentMdParser
             : (IReadOnlyList<string>)[];
 
         return new AgentLlmRequirements(capabilities);
+    }
+
+    private static int ParsePriority(Dictionary<string, object?> metadata)
+    {
+        if (!metadata.TryGetValue("openvepa-priority", out var value))
+            return 10;
+
+        return value switch
+        {
+            int i => i,
+            string s when int.TryParse(s, out var parsed) => parsed,
+            _ => TryConvertToInt(value, 10)
+        };
+    }
+
+    private static IReadOnlyList<string>? ParseNullableStringList(object? value)
+    {
+        if (value is null)
+            return null;
+
+        var list = ParseStringList(value);
+        return list.Count > 0 ? list : null;
+    }
+
+    private static AgentLlmConfig? ParseLlmConfig(object? value)
+    {
+        if (value is not IDictionary<object, object> dict)
+            return null;
+
+        var provider = GetStringValue(dict, "provider");
+        var model = GetStringValue(dict, "model");
+
+        double? temperature = null;
+        if (dict.TryGetValue("temperature", out var tempVal))
+            temperature = TryConvertToDouble(tempVal);
+
+        int? maxTokens = null;
+        if (dict.TryGetValue("max-tokens", out var maxVal))
+        {
+            var converted = TryConvertToInt(maxVal, -1);
+            if (converted >= 0)
+                maxTokens = converted;
+        }
+
+        return new AgentLlmConfig(provider, model, temperature, maxTokens);
+    }
+
+    private static AgentPermissions? ParsePermissions(object? value)
+    {
+        if (value is not IDictionary<object, object> dict)
+            return null;
+
+        return new AgentPermissions(
+            Internet: GetBoolValue(dict, "internet"),
+            FileSystem: GetBoolValue(dict, "file-system"),
+            CodeExecution: GetBoolValue(dict, "code-execution"),
+            DatabaseAccess: GetBoolValue(dict, "database-access"));
+    }
+
+    private static AgentTokenBudget? ParseTokenBudget(object? value)
+    {
+        if (value is not IDictionary<object, object> dict)
+            return null;
+
+        long maxTokensPerPeriod = 0;
+        if (dict.TryGetValue("max-tokens-per-period", out var maxVal))
+            maxTokensPerPeriod = TryConvertToLong(maxVal, 0);
+
+        var period = BudgetPeriod.Monthly;
+        if (dict.TryGetValue("period", out var periodVal))
+            period = ParseHyphenatedEnum(periodVal?.ToString(), BudgetPeriod.Monthly);
+
+        var action = BudgetAction.Stop;
+        if (dict.TryGetValue("action-on-exceeded", out var actionVal))
+            action = ParseHyphenatedEnum(actionVal?.ToString(), BudgetAction.Stop);
+
+        var pauseResumeMinutes = 60;
+        if (dict.TryGetValue("pause-resume-minutes", out var pauseVal))
+            pauseResumeMinutes = TryConvertToInt(pauseVal, 60);
+
+        return new AgentTokenBudget(maxTokensPerPeriod, period, action, pauseResumeMinutes);
+    }
+
+    private static string? GetStringValue(IDictionary<object, object> dict, string key)
+    {
+        return dict.TryGetValue(key, out var val) ? val?.ToString() : null;
+    }
+
+    private static bool GetBoolValue(IDictionary<object, object> dict, string key)
+    {
+        if (!dict.TryGetValue(key, out var val))
+            return false;
+
+        return val switch
+        {
+            bool b => b,
+            string s => s.Equals("true", StringComparison.OrdinalIgnoreCase),
+            _ => false
+        };
+    }
+
+    private static T ParseHyphenatedEnum<T>(string? value, T defaultValue) where T : struct, Enum
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return defaultValue;
+
+        // Replace hyphens with empty string so "pause-resume" becomes "pauseresume",
+        // then use case-insensitive parse which handles "PauseResume" matching.
+        var normalized = value.Replace("-", "", StringComparison.Ordinal);
+        return Enum.TryParse<T>(normalized, ignoreCase: true, out var result)
+            ? result
+            : defaultValue;
+    }
+
+    private static int TryConvertToInt(object? value, int defaultValue)
+    {
+        try
+        {
+            return value switch
+            {
+                int i => i,
+                string s when int.TryParse(s, out var parsed) => parsed,
+                null => defaultValue,
+                _ => Convert.ToInt32(value)
+            };
+        }
+        catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException)
+        {
+            return defaultValue;
+        }
+    }
+
+    private static long TryConvertToLong(object? value, long defaultValue)
+    {
+        try
+        {
+            return value switch
+            {
+                long l => l,
+                int i => i,
+                string s when long.TryParse(s, out var parsed) => parsed,
+                null => defaultValue,
+                _ => Convert.ToInt64(value)
+            };
+        }
+        catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException)
+        {
+            return defaultValue;
+        }
+    }
+
+    private static double? TryConvertToDouble(object? value)
+    {
+        try
+        {
+            return value switch
+            {
+                double d => d,
+                float f => f,
+                int i => i,
+                string s when double.TryParse(s, out var parsed) => parsed,
+                null => null,
+                _ => Convert.ToDouble(value)
+            };
+        }
+        catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException)
+        {
+            return null;
+        }
     }
 
     private static string BuildSystemPrompt(Dictionary<string, string> sections)

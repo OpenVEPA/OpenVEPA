@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenVEPA.Agents.Runtime;
 using OpenVEPA.Cli.Commands;
@@ -20,6 +21,10 @@ var connectionString = $"Data Source={Path.Combine(openvepaHome, "data", "openve
 var documentsPath = Path.Combine(openvepaHome, "data", "documents");
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Load persisted configuration from the OpenVEPA home directory (survives container rebuilds).
+var homeConfigPath = Path.Combine(openvepaHome, "appsettings.json");
+builder.Configuration.AddJsonFile(homeConfigPath, optional: true, reloadOnChange: true);
 
 builder.Host.UseSerilog((_, configuration) => configuration
     .MinimumLevel.Information()

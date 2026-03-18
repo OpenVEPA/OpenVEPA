@@ -669,6 +669,19 @@ internal sealed class RecordingAgentRuntime : IAgentRuntime
         await Task.CompletedTask;
         yield break;
     }
+
+    public Task<DelegationResult> DelegateToAgentAsync(
+        string agentName,
+        DelegationContext context,
+        CancellationToken ct)
+    {
+        return Task.FromResult(new DelegationResult(
+            AgentName: agentName,
+            Response: string.Empty,
+            TokensUsed: null,
+            Success: false,
+            ErrorMessage: "Not implemented in test double."));
+    }
 }
 
 internal sealed record AgentRuntimeRequest(string SessionId, string Message);

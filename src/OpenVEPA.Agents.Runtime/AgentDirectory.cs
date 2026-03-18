@@ -25,7 +25,24 @@ public sealed class AgentDirectory
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    /// <summary>Scans the agents directory and returns all discovered agent definitions.</summary>
+    /// <summary>The built-in assistant agent that is always present.</summary>
+    internal static readonly AgentDefinition BuiltInAssistant = new(
+        Name: "assistant",
+        Description: "Your personal AI assistant \u2014 the core brain that orchestrates conversations, delegates to skills, and learns your preferences.",
+        SystemPrompt: "You are a helpful, versatile AI assistant. Answer questions clearly and concisely. "
+            + "When the user has preferences configured, respect their communication style. "
+            + "You can delegate work to specialized skills when appropriate.",
+        Skills: [],
+        AutonomyLevel: 2,
+        LlmRequirements: null,
+        IsSystem: true);
+
+    /// <summary>Scans the agents directory and returns all discovered agent definitions, always including the assistant first.</summary>
+    /// <remarks>
+    /// If an <c>assistant.agent.md</c> file is found on disk, it overrides the hardcoded
+    /// <see cref="BuiltInAssistant"/> fallback, allowing the orchestrator prompt and settings
+    /// to be customized without recompilation.
+    /// </remarks>
     public IReadOnlyList<AgentDefinition> DiscoverAgents()
     {
         var agentsPath = Path.GetFullPath(_options.AgentsDirectory);
@@ -33,19 +50,32 @@ public sealed class AgentDirectory
         if (!Directory.Exists(agentsPath))
         {
             _logger.LogWarning("Agents directory not found: {Path}", agentsPath);
-            return [];
+            return [BuiltInAssistant];
         }
 
+        AgentDefinition assistant = BuiltInAssistant;
         var agents = new List<AgentDefinition>();
 
         foreach (var subdirectory in Directory.EnumerateDirectories(agentsPath))
         {
             var definition = TryLoadAgent(subdirectory);
-            if (definition is not null)
+            if (definition is null)
+                continue;
+
+            if (string.Equals(definition.Name, BuiltInAssistant.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                assistant = definition with { IsSystem = true };
+                _logger.LogInformation("Loaded assistant definition from file, overriding built-in fallback");
+            }
+            else
+            {
                 agents.Add(definition);
+            }
         }
 
-        _logger.LogInformation("Discovered {Count} agent(s) in {Path}", agents.Count, agentsPath);
+        agents.Insert(0, assistant);
+
+        _logger.LogInformation("Discovered {Count} agent(s) in {Path} (including assistant)", agents.Count, agentsPath);
         return agents;
     }
 

@@ -14,4 +14,5 @@ public sealed record LlmAuditLogEntry(
     string? TaskId,
     string? SkillName,
     bool Success,
-    string? ErrorMessage);
+    string? ErrorMessage,
+    string? AgentName = null);

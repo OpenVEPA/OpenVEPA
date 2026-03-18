@@ -37,6 +37,25 @@ public sealed class AgentDefinitionTests
             "minimal", "Minimal agent", "prompt", [], 1, LlmRequirements: null);
 
         agent.LlmRequirements.Should().BeNull();
+        agent.IsSystem.Should().BeFalse();
+    }
+
+    [Fact]
+    public void AgentDefinition_IsSystem_DefaultsToFalse()
+    {
+        var agent = new AgentDefinition(
+            "user-agent", "A user agent", "prompt", [], 1, null);
+
+        agent.IsSystem.Should().BeFalse();
+    }
+
+    [Fact]
+    public void AgentDefinition_IsSystem_CanBeSetToTrue()
+    {
+        var agent = new AgentDefinition(
+            "built-in", "Built-in agent", "prompt", [], 2, null, IsSystem: true);
+
+        agent.IsSystem.Should().BeTrue();
     }
 
     [Fact]

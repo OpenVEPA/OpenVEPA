@@ -25,6 +25,7 @@ public static class AgentServiceExtensions
         services.AddSingleton<AgentDirectory>();
         services.AddSingleton<AssistantAgent>();
         services.AddSingleton<IAgentRuntime, AgentRuntime>();
+        services.AddSingleton<IAgentTokenBudgetTracker, AgentTokenBudgetTracker>();
 
         return services;
     }

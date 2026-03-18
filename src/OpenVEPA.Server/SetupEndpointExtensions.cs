@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using OpenVEPA.Storage;
 
 namespace OpenVEPA.Server;
 
@@ -92,14 +93,27 @@ internal static class SetupEndpointExtensions
                 return Results.BadRequest("Empty configuration body.");
             }
 
-            var homePath = ExpandHomePath(submission.HomePath ?? string.Empty);
+            // Default to the SetupCompletionService's home directory so config writes to
+            // the volume-mounted path instead of the application directory.
+            var homePath = string.IsNullOrWhiteSpace(submission.HomePath)
+                ? Path.GetDirectoryName(setupService.ConfigPath)!
+                : ExpandHomePath(submission.HomePath);
 
             await WriteSetupConfigAsync(submission, homePath, context.RequestAborted)
                 .ConfigureAwait(false);
 
             setupService.MarkComplete();
 
-            return Results.Ok(new { redirectUrl = "/" });
+            var tokenStore = context.RequestServices.GetRequiredService<SqliteTokenStore>();
+            var result = await tokenStore.CreateTokenAsync("web-default", context.RequestAborted)
+                .ConfigureAwait(false);
+
+            return Results.Ok(new
+            {
+                redirectUrl = "/",
+                token = result.PlaintextToken,
+                tokenId = result.TokenId,
+            });
         });
 
         // Cancel.

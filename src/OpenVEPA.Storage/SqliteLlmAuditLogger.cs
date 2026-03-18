@@ -60,7 +60,8 @@ public sealed class SqliteLlmAuditLogger
             TaskId = entry.TaskId,
             SkillName = entry.SkillName,
             Success = entry.Success,
-            ErrorMessage = entry.ErrorMessage
+            ErrorMessage = entry.ErrorMessage,
+            AgentName = entry.AgentName
         };
     }
 }

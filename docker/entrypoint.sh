@@ -132,6 +132,12 @@ EOF
     echo "[OpenVEPA]   Provider: ${provider}"
     echo "[OpenVEPA]   Model: ${model}"
     echo "[OpenVEPA]   Port: ${PORT}"
+
+    # Create initial API token for WebUI access
+    echo "[OpenVEPA] Creating initial API token..."
+    TOKEN_OUTPUT=$("$APP_PATH" token create "docker-auto" 2>&1 || true)
+    echo "$TOKEN_OUTPUT"
+    echo "[OpenVEPA] Token created. Use 'docker exec openvepa openvepa token list' to view tokens."
 }
 
 # ---------------------------------------------------------------------------

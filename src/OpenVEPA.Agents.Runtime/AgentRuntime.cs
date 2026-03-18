@@ -13,13 +13,16 @@ namespace OpenVEPA.Agents.Runtime;
 
 /// <summary>
 /// Default implementation of <see cref="IAgentRuntime"/> that loads agent definitions,
-/// manages session context, and routes messages to the appropriate agent.
+/// manages session context, classifies intent via trigger matching, and routes
+/// messages to the appropriate specialist agent or the default orchestrator.
 /// </summary>
 public sealed class AgentRuntime : IAgentRuntime
 {
     private readonly AssistantAgent _assistant;
     private readonly AgentDirectory _agentDirectory;
     private readonly IUserProfileService _userProfileService;
+    private readonly ISystemPromptBuilder _systemPromptBuilder;
+    private readonly IAgentTokenBudgetTracker _budgetTracker;
     private readonly ILogger<AgentRuntime> _logger;
     private readonly AgentOptions _options;
 
@@ -31,6 +34,8 @@ public sealed class AgentRuntime : IAgentRuntime
         AssistantAgent assistant,
         AgentDirectory agentDirectory,
         IUserProfileService userProfileService,
+        ISystemPromptBuilder systemPromptBuilder,
+        IAgentTokenBudgetTracker budgetTracker,
         IOptions<AgentOptions> options,
         ILogger<AgentRuntime> logger)
     {
@@ -39,6 +44,8 @@ public sealed class AgentRuntime : IAgentRuntime
         _assistant = assistant ?? throw new ArgumentNullException(nameof(assistant));
         _agentDirectory = agentDirectory ?? throw new ArgumentNullException(nameof(agentDirectory));
         _userProfileService = userProfileService ?? throw new ArgumentNullException(nameof(userProfileService));
+        _systemPromptBuilder = systemPromptBuilder ?? throw new ArgumentNullException(nameof(systemPromptBuilder));
+        _budgetTracker = budgetTracker ?? throw new ArgumentNullException(nameof(budgetTracker));
         _options = options.Value;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
@@ -51,11 +58,55 @@ public sealed class AgentRuntime : IAgentRuntime
     {
         ValidateInputs(sessionId, message);
 
-        var agent = GetDefaultAgent();
-        var history = GetSessionHistory(sessionId);
-        var preferences = await LoadPreferencesAsync(ct);
+        var agents = DiscoverAgents();
+        var orchestrator = GetOrchestratorAgent(agents);
+        var preferences = await LoadPreferencesAsync(ct).ConfigureAwait(false);
 
-        var response = await _assistant.ProcessAsync(agent, history, message, preferences, ct);
+        // Enforce the orchestrator's token budget before any LLM call.
+        var budgetCheck = await _budgetTracker.CheckBudgetAsync(
+            orchestrator.Name, orchestrator.TokenBudget, ct).ConfigureAwait(false);
+
+        if (!budgetCheck.IsAllowed)
+        {
+            return new AgentResponse(
+                budgetCheck.Message ?? "Token budget exceeded.",
+                null, null);
+        }
+
+        // Phase 1 — trigger-based delegation to specialist agents.
+        var matchedAgent = MatchTriggers(message, agents, orchestrator);
+        if (matchedAgent is not null)
+        {
+            _logger.LogInformation(
+                "Trigger matched specialist '{Agent}' for message in session {Session}.",
+                matchedAgent.Name, sessionId);
+
+            var delegationResult = await DelegateWithBudgetAsync(
+                matchedAgent, message, preferences, ct).ConfigureAwait(false);
+
+            AppendToHistory(sessionId, ChatRole.User, message);
+            AppendToHistory(sessionId, ChatRole.Assistant, delegationResult.Response);
+
+            return FormatDelegationResponse(delegationResult);
+        }
+
+        // No trigger match — orchestrator handles directly with a dynamic system prompt.
+        var history = GetSessionHistory(sessionId);
+        var promptContext = new SystemPromptContext(
+            orchestrator, preferences, agents,
+            _options.DelegationVisibility, budgetCheck);
+        var dynamicPrompt = _systemPromptBuilder.Build(promptContext);
+        var augmentedAgent = orchestrator with { SystemPrompt = dynamicPrompt };
+
+        var response = await _assistant.ProcessAsync(
+            augmentedAgent, history, message, preferences, ct).ConfigureAwait(false);
+
+        // Record token usage against the orchestrator's budget.
+        if (response.TotalTokenUsage is { } usage)
+        {
+            await _budgetTracker.RecordUsageAsync(
+                orchestrator.Name, usage.InputTokens, usage.OutputTokens, ct).ConfigureAwait(false);
+        }
 
         AppendToHistory(sessionId, ChatRole.User, message);
         AppendToHistory(sessionId, ChatRole.Assistant, response.Content);
@@ -71,13 +122,50 @@ public sealed class AgentRuntime : IAgentRuntime
     {
         ValidateInputs(sessionId, message);
 
-        var agent = GetDefaultAgent();
+        var agents = DiscoverAgents();
+        var orchestrator = GetOrchestratorAgent(agents);
+        var preferences = await LoadPreferencesAsync(ct).ConfigureAwait(false);
+
+        // Enforce the orchestrator's token budget.
+        var budgetCheck = await _budgetTracker.CheckBudgetAsync(
+            orchestrator.Name, orchestrator.TokenBudget, ct).ConfigureAwait(false);
+
+        if (!budgetCheck.IsAllowed)
+        {
+            yield return budgetCheck.Message ?? "Token budget exceeded.";
+            yield break;
+        }
+
+        // Phase 1 — trigger-based delegation to specialist agents.
+        var matchedAgent = MatchTriggers(message, agents, orchestrator);
+        if (matchedAgent is not null)
+        {
+            _logger.LogInformation(
+                "Trigger matched specialist '{Agent}' for streaming in session {Session}.",
+                matchedAgent.Name, sessionId);
+
+            var delegationResult = await DelegateWithBudgetAsync(
+                matchedAgent, message, preferences, ct).ConfigureAwait(false);
+
+            AppendToHistory(sessionId, ChatRole.User, message);
+            AppendToHistory(sessionId, ChatRole.Assistant, delegationResult.Response);
+
+            var formatted = FormatDelegationResponse(delegationResult);
+            yield return formatted.Content;
+            yield break;
+        }
+
+        // No trigger match — orchestrator handles with dynamic prompt.
         var history = GetSessionHistory(sessionId);
-        var preferences = await LoadPreferencesAsync(ct);
+        var promptContext = new SystemPromptContext(
+            orchestrator, preferences, agents,
+            _options.DelegationVisibility, budgetCheck);
+        var dynamicPrompt = _systemPromptBuilder.Build(promptContext);
+        var augmentedAgent = orchestrator with { SystemPrompt = dynamicPrompt };
 
         var fullResponse = new StringBuilder();
 
-        await foreach (var token in _assistant.StreamAsync(agent, history, message, preferences, ct))
+        await foreach (var token in _assistant.StreamAsync(augmentedAgent, history, message, preferences, ct))
         {
             fullResponse.Append(token);
             yield return token;
@@ -87,11 +175,80 @@ public sealed class AgentRuntime : IAgentRuntime
         AppendToHistory(sessionId, ChatRole.Assistant, fullResponse.ToString());
     }
 
-    private AgentDefinition GetDefaultAgent()
+    /// <inheritdoc />
+    public async Task<DelegationResult> DelegateToAgentAsync(
+        string agentName,
+        DelegationContext context,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(agentName);
+        ArgumentNullException.ThrowIfNull(context);
+
+        var agents = DiscoverAgents();
+
+        var targetAgent = agents.FirstOrDefault(a =>
+            string.Equals(a.Name, agentName, StringComparison.OrdinalIgnoreCase));
+
+        if (targetAgent is null)
+        {
+            _logger.LogWarning("Delegation target agent '{AgentName}' not found.", agentName);
+            return new DelegationResult(
+                AgentName: agentName,
+                Response: string.Empty,
+                TokensUsed: null,
+                Success: false,
+                ErrorMessage: $"Agent '{agentName}' not found.");
+        }
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        try
+        {
+            var preferences = await LoadPreferencesAsync(ct).ConfigureAwait(false);
+
+            // Build a dynamic system prompt for the target agent.
+            var promptContext = new SystemPromptContext(targetAgent, preferences);
+            var dynamicPrompt = _systemPromptBuilder.Build(promptContext);
+            var augmentedAgent = targetAgent with { SystemPrompt = dynamicPrompt };
+
+            var response = await _assistant.ProcessAsync(
+                augmentedAgent, [], context.OriginalMessage, preferences, ct).ConfigureAwait(false);
+
+            stopwatch.Stop();
+
+            return new DelegationResult(
+                AgentName: agentName,
+                Response: response.Content,
+                TokensUsed: response.TotalTokenUsage,
+                Success: true,
+                Duration: stopwatch.Elapsed);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            stopwatch.Stop();
+            _logger.LogError(ex, "Delegation to agent '{AgentName}' failed.", agentName);
+
+            return new DelegationResult(
+                AgentName: agentName,
+                Response: string.Empty,
+                TokensUsed: null,
+                Success: false,
+                ErrorMessage: ex.Message,
+                Duration: stopwatch.Elapsed);
+        }
+    }
+
+    // ── Private helpers ──────────────────────────────────────────────
+
+    private IReadOnlyList<AgentDefinition> DiscoverAgents()
     {
         _agents ??= _agentDirectory.DiscoverAgents();
+        return _agents;
+    }
 
-        var defaultAgent = _agents.FirstOrDefault(a =>
+    private AgentDefinition GetOrchestratorAgent(IReadOnlyList<AgentDefinition> agents)
+    {
+        var defaultAgent = agents.FirstOrDefault(a =>
             string.Equals(a.Name, _options.DefaultAgent, StringComparison.OrdinalIgnoreCase));
 
         if (defaultAgent is not null)
@@ -99,7 +256,7 @@ public sealed class AgentRuntime : IAgentRuntime
 
         _logger.LogWarning(
             "Default agent '{DefaultAgent}' not found among {Count} discovered agent(s). Using built-in fallback.",
-            _options.DefaultAgent, _agents.Count);
+            _options.DefaultAgent, agents.Count);
 
         return new AgentDefinition(
             Name: "assistant",
@@ -107,7 +264,77 @@ public sealed class AgentRuntime : IAgentRuntime
             SystemPrompt: "You are a helpful assistant. Answer questions clearly and concisely.",
             Skills: [],
             AutonomyLevel: 0,
-            LlmRequirements: null);
+            LlmRequirements: null,
+            IsSystem: true);
+    }
+
+    private AgentDefinition? MatchTriggers(
+        string message, IReadOnlyList<AgentDefinition> agents, AgentDefinition orchestrator)
+    {
+        var lowerMessage = message.ToLowerInvariant();
+
+        return agents
+            .Where(a => a.Name != orchestrator.Name && a.Triggers is { Count: > 0 })
+            .Where(a => a.Triggers!.Any(t => lowerMessage.Contains(t.ToLowerInvariant())))
+            .OrderByDescending(a => a.Priority)
+            .FirstOrDefault();
+    }
+
+    private async Task<DelegationResult> DelegateWithBudgetAsync(
+        AgentDefinition target, string message, UserPreferences? preferences, CancellationToken ct)
+    {
+        var budgetCheck = await _budgetTracker.CheckBudgetAsync(
+            target.Name, target.TokenBudget, ct).ConfigureAwait(false);
+
+        if (!budgetCheck.IsAllowed)
+        {
+            return new DelegationResult(
+                target.Name, budgetCheck.Message ?? "Budget exceeded",
+                null, false, budgetCheck.Message);
+        }
+
+        var context = new DelegationContext(
+            OriginalMessage: message,
+            RelevantHistory: [],
+            UserPreferencesSummary: preferences?.Entries.Count > 0
+                ? string.Join("; ", preferences.Entries.Select(e => $"{e.Key}: {e.Value.Value}"))
+                : null,
+            TaskDescription: null,
+            BudgetRemaining: target.TokenBudget);
+
+        var result = await DelegateToAgentAsync(target.Name, context, ct).ConfigureAwait(false);
+
+        if (result.TokensUsed is { } usage)
+        {
+            await _budgetTracker.RecordUsageAsync(
+                target.Name, usage.InputTokens, usage.OutputTokens, ct).ConfigureAwait(false);
+        }
+
+        return result;
+    }
+
+    private AgentResponse FormatDelegationResponse(DelegationResult result)
+    {
+        if (!result.Success)
+        {
+            return new AgentResponse(
+                $"I encountered an issue: {result.ErrorMessage}",
+                null, result.TokensUsed);
+        }
+
+        var content = _options.DelegationVisibility switch
+        {
+            DelegationVisibility.Invisible => result.Response,
+            DelegationVisibility.Visible => $"*Consulted {result.AgentName}*\n\n{result.Response}",
+            DelegationVisibility.Detailed =>
+                $"**Delegated to: {result.AgentName}** " +
+                $"(Duration: {result.Duration.TotalSeconds:F1}s, " +
+                $"Tokens: {result.TokensUsed?.InputTokens + result.TokensUsed?.OutputTokens})\n\n" +
+                result.Response,
+            _ => result.Response
+        };
+
+        return new AgentResponse(content, null, result.TokensUsed);
     }
 
     private IReadOnlyList<ChatMessage> GetSessionHistory(string sessionId)
@@ -127,7 +354,7 @@ public sealed class AgentRuntime : IAgentRuntime
     {
         try
         {
-            return await _userProfileService.GetRelevantPreferencesAsync(null, ct);
+            return await _userProfileService.GetRelevantPreferencesAsync(null, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

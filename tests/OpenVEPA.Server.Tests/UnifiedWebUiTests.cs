@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 
 using FluentAssertions;
@@ -13,6 +14,7 @@ using Microsoft.Extensions.Logging;
 
 using OpenVEPA.Server;
 using OpenVEPA.Server.Middleware;
+using OpenVEPA.Storage;
 
 namespace OpenVEPA.Server.Tests;
 
@@ -205,6 +207,38 @@ public sealed class UnifiedWebUiTests : IDisposable
         });
     }
 
+    [Fact]
+    public async Task SetupApi_CreatesBootstrapToken_AndReturnsIt()
+    {
+        await RunIntegrationTestAsync(setupComplete: false, async (client, tokenStore, homeDir) =>
+        {
+            using var response = await client.PostAsJsonAsync("/init/api/setup", new
+            {
+                provider = "ollama",
+                modelId = "llama3.2",
+                endpoint = "http://localhost:11434",
+                homePath = homeDir,
+                port = 8371,
+                schedulerEnabled = true,
+                telegramBotToken = string.Empty,
+                whatsAppEnabled = false,
+            }).ConfigureAwait(false);
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            using var document = JsonDocument.Parse(
+                await response.Content.ReadAsStringAsync().ConfigureAwait(false));
+            var root = document.RootElement;
+            root.GetProperty("redirectUrl").GetString().Should().Be("/");
+            root.GetProperty("token").GetString().Should().NotBeNullOrWhiteSpace();
+            root.GetProperty("tokenId").GetString().Should().NotBeNullOrWhiteSpace();
+
+            var tokens = await tokenStore.ListTokensAsync().ConfigureAwait(false);
+            tokens.Should().ContainSingle();
+            tokens[0].Name.Should().Be("web-default");
+        });
+    }
+
     // ─── Helpers ──────────────────────────────────────────────────────────
 
     private SetupRedirectMiddleware CreateMiddleware(bool setupComplete)
@@ -231,7 +265,20 @@ public sealed class UnifiedWebUiTests : IDisposable
     /// Creates a minimal Kestrel test server with setup endpoints, starts it on a random port,
     /// runs the test delegate, then tears down the server.
     /// </summary>
-    private async Task RunIntegrationTestAsync(bool setupComplete, Func<HttpClient, Task> test)
+    private Task RunIntegrationTestAsync(bool setupComplete, Func<HttpClient, Task> test)
+    {
+        return RunIntegrationTestAsync(
+            setupComplete,
+            async (client, _, _) => await test(client).ConfigureAwait(false));
+    }
+
+    /// <summary>
+    /// Creates a minimal Kestrel test server with setup endpoints, starts it on a random port,
+    /// exposes the token store for assertions, then tears down the server.
+    /// </summary>
+    private async Task RunIntegrationTestAsync(
+        bool setupComplete,
+        Func<HttpClient, SqliteTokenStore, string, Task> test)
     {
         var homeDir = Path.Combine(_tempDir, Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(homeDir);
@@ -242,6 +289,11 @@ public sealed class UnifiedWebUiTests : IDisposable
         }
 
         var setupService = new SetupCompletionService(homeDir);
+        var dataDir = Path.Combine(homeDir, "data");
+        Directory.CreateDirectory(dataDir);
+        var documentsPath = Path.Combine(dataDir, "documents");
+        Directory.CreateDirectory(documentsPath);
+        var connectionString = $"Data Source={Path.Combine(dataDir, "openvepa.db")}";
 
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         {
@@ -249,11 +301,13 @@ public sealed class UnifiedWebUiTests : IDisposable
         });
 
         builder.Services.AddSingleton(setupService);
+        builder.Services.AddOpenVepaStorage(connectionString, documentsPath);
         builder.Services.AddHealthChecks();
         builder.Services.AddRouting();
         builder.Logging.ClearProviders();
 
         await using var app = builder.Build();
+        await app.Services.InitializeStorageAsync().ConfigureAwait(false);
 
         app.Urls.Add("http://127.0.0.1:0");
 
@@ -281,21 +335,22 @@ public sealed class UnifiedWebUiTests : IDisposable
             });
         });
 
-        await app.StartAsync();
+        await app.StartAsync().ConfigureAwait(false);
         try
         {
             var server = app.Services.GetRequiredService<IServer>();
             var addressFeature = server.Features.Get<IServerAddressesFeature>()!;
             var baseAddress = new Uri(addressFeature.Addresses.First());
+            var tokenStore = app.Services.GetRequiredService<SqliteTokenStore>();
 
             using var handler = new HttpClientHandler { AllowAutoRedirect = false };
             using var client = new HttpClient(handler) { BaseAddress = baseAddress };
 
-            await test(client);
+            await test(client, tokenStore, homeDir).ConfigureAwait(false);
         }
         finally
         {
-            await app.StopAsync();
+            await app.StopAsync().ConfigureAwait(false);
         }
     }
 }

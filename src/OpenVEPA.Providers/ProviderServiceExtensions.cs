@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
 
+using OpenVEPA.Core.Agents;
 using OpenVEPA.Core.Audit;
 
 namespace OpenVEPA.Providers;
@@ -32,6 +33,8 @@ public static class ProviderServiceExtensions
         RegisterOpenAi(services);
         RegisterOllama(services);
         RegisterDefault(services);
+
+        services.AddSingleton<IAgentChatClientFactory, AgentChatClientFactory>();
 
         return services;
     }

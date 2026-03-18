@@ -14,6 +14,7 @@
     <Project Path="src/OpenVEPA.Storage/OpenVEPA.Storage.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/OpenVEPA.Agents.Runtime.Tests/OpenVEPA.Agents.Runtime.Tests.csproj" />
     <Project Path="tests/OpenVEPA.Cli.Tests/OpenVEPA.Cli.Tests.csproj" />
     <Project Path="tests/OpenVEPA.Core.Tests/OpenVEPA.Core.Tests.csproj" />
     <Project Path="tests/OpenVEPA.Server.Tests/OpenVEPA.Server.Tests.csproj" />

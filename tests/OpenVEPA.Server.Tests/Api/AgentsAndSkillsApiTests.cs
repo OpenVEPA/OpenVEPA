@@ -15,6 +15,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using OpenVEPA.Agents.Runtime;
+using OpenVEPA.Core.Agents;
+using OpenVEPA.Core.Preferences;
 using OpenVEPA.Core.Skills;
 using OpenVEPA.Server.Api;
 using OpenVEPA.Skills.Runtime;
@@ -75,12 +77,19 @@ public sealed class AgentsAndSkillsApiTests : IDisposable
         var listJson = await listResponse.Content.ReadAsStringAsync().ConfigureAwait(true);
         using var listDocument = JsonDocument.Parse(listJson);
         var summaries = listDocument.RootElement.EnumerateArray().ToArray();
-        summaries.Should().HaveCount(1);
-        summaries[0].GetProperty("name").GetString().Should().Be("planner");
-        summaries[0].GetProperty("description").GetString().Should().Be("Plans work in structured milestones.");
-        summaries[0].GetProperty("autonomyLevel").GetInt32().Should().Be(2);
-        summaries[0].GetProperty("skillCount").GetInt32().Should().Be(2);
-        summaries[0].TryGetProperty("systemPrompt", out _).Should().BeFalse();
+        summaries.Should().HaveCount(2);
+
+        // Built-in system agent is always first.
+        summaries[0].GetProperty("name").GetString().Should().Be("assistant");
+        summaries[0].GetProperty("isSystem").GetBoolean().Should().BeTrue();
+
+        // Filesystem-discovered agent follows.
+        summaries[1].GetProperty("name").GetString().Should().Be("planner");
+        summaries[1].GetProperty("description").GetString().Should().Be("Plans work in structured milestones.");
+        summaries[1].GetProperty("autonomyLevel").GetInt32().Should().Be(2);
+        summaries[1].GetProperty("skillCount").GetInt32().Should().Be(2);
+        summaries[1].GetProperty("isSystem").GetBoolean().Should().BeFalse();
+        summaries[1].TryGetProperty("systemPrompt", out _).Should().BeFalse();
 
         using var detailResponse = await host.Client.GetAsync("/api/agents/planner").ConfigureAwait(true);
 
@@ -88,7 +97,7 @@ public sealed class AgentsAndSkillsApiTests : IDisposable
         var detailJson = await detailResponse.Content.ReadAsStringAsync().ConfigureAwait(true);
         using var detailDocument = JsonDocument.Parse(detailJson);
         detailDocument.RootElement.GetProperty("name").GetString().Should().Be("planner");
-        detailDocument.RootElement.GetProperty("systemPrompt").GetString().Should().Contain("Plan work carefully.");
+        detailDocument.RootElement.TryGetProperty("systemPrompt", out _).Should().BeFalse();
         detailDocument.RootElement.GetProperty("skills").EnumerateArray().Select(static skill => skill.GetString()).Should().Equal("summarize", "classify");
 
         using var missingResponse = await host.Client.GetAsync("/api/agents/missing").ConfigureAwait(true);
@@ -161,6 +170,8 @@ public sealed class AgentsAndSkillsApiTests : IDisposable
         });
         builder.Services.AddSingleton<AgentMdParser>();
         builder.Services.AddSingleton<AgentDirectory>();
+        builder.Services.AddSingleton<IUserProfileService, StubUserProfileService>();
+        builder.Services.AddSingleton<IAgentTokenBudgetTracker, StubAgentTokenBudgetTracker>();
 
         builder.Services.Configure<SkillsOptions>(options => options.SkillsDirectory = skillsPath);
         builder.Services.AddSingleton<SkillMdParser>();
@@ -290,6 +301,33 @@ public sealed class AgentsAndSkillsApiTests : IDisposable
             var ticket = new AuthenticationTicket(principal, SchemeName);
             return Task.FromResult(AuthenticateResult.Success(ticket));
         }
+    }
+
+    private sealed class StubUserProfileService : IUserProfileService
+    {
+        public Task<UserPreferences> GetRelevantPreferencesAsync(string? taskDomain, CancellationToken ct) =>
+            Task.FromResult(new UserPreferences(new Dictionary<string, PreferenceEntry>()));
+
+        public Task SetExplicitPreferenceAsync(string key, string value, string category, CancellationToken ct) =>
+            Task.CompletedTask;
+
+        public Task DeletePreferenceAsync(string key, CancellationToken ct) =>
+            Task.CompletedTask;
+
+        public Task<IReadOnlyList<PreferenceEntry>> GetAllPreferencesAsync(CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<PreferenceEntry>>([]);
+    }
+
+    private sealed class StubAgentTokenBudgetTracker : IAgentTokenBudgetTracker
+    {
+        public Task<BudgetCheckResult> CheckBudgetAsync(string agentName, AgentTokenBudget? budget, CancellationToken ct = default) =>
+            Task.FromResult(new BudgetCheckResult(true, false, null, 0, 0, null));
+
+        public Task RecordUsageAsync(string agentName, int inputTokens, int outputTokens, CancellationToken ct = default) =>
+            Task.CompletedTask;
+
+        public Task<AgentTokenUsageSummary> GetUsageSummaryAsync(string agentName, AgentTokenBudget? budget, CancellationToken ct = default) =>
+            Task.FromResult(new AgentTokenUsageSummary(agentName, 0, 0, 0, 0, BudgetPeriod.Monthly, DateTime.UtcNow, DateTime.UtcNow.AddMonths(1)));
     }
 }
 

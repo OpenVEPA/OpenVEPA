@@ -563,9 +563,15 @@ button:disabled{opacity:.5;cursor:not-allowed}
             headers: {'Content-Type': 'application/json'}
         }).then(function(response){
             if(!response.ok) throw new Error('Server returned ' + response.status);
+            return response.json();
+        }).then(function(data){
+            if(data && data.token){
+                window.localStorage.setItem('openvepa_token', data.token);
+            }
             showStatus('success', 'Configuration saved! Redirecting...');
             form.style.display = 'none';
-            setTimeout(function(){ window.location.href = '/'; }, 1500);
+            var redirectUrl = data && data.redirectUrl ? data.redirectUrl : '/';
+            setTimeout(function(){ window.location.href = redirectUrl; }, 1500);
         }).catch(function(err){
             showStatus('error', 'Failed to save: ' + err.message);
             nextBtn.disabled = false;

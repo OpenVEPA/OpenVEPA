@@ -139,9 +139,11 @@ public sealed class OpenVepaDbContext : DbContext
             entity.Property(e => e.SessionId).HasMaxLength(64);
             entity.Property(e => e.TaskId).HasMaxLength(64);
             entity.Property(e => e.SkillName).HasMaxLength(200);
+            entity.Property(e => e.AgentName).HasMaxLength(200);
 
             entity.HasIndex(e => e.Timestamp);
             entity.HasIndex(e => e.SessionId);
+            entity.HasIndex(e => e.AgentName);
         });
     }
 
