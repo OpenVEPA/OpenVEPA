@@ -1,4 +1,4 @@
-namespace OpenVEPA.Server;
+﻿namespace OpenVEPA.Server;
 
 /// <summary>Contains the embedded HTML for the main OpenVEPA WebUI shell served at <c>GET /</c>.</summary>
 internal static class DashboardPageHtml
@@ -24,6 +24,28 @@ internal static class DashboardPageHtml
     --shadow:0 18px 42px rgba(0,0,0,.28);
     --sidebar-width:280px;
     --sidebar-collapsed-width:88px;
+}
+[data-theme="dark"]{
+    --bg-main:#1a1a2e;
+    --bg-panel:#16213e;
+    --bg-surface:#0f3460;
+    --bg-hover:#1d2a4a;
+    --border:#2a2a4e;
+    --accent:#50fa7b;
+    --text-primary:#e0e0e0;
+    --text-secondary:#888;
+    --shadow:0 18px 42px rgba(0,0,0,.28);
+}
+[data-theme="light"]{
+    --bg-main:#f0f2f5;
+    --bg-panel:#ffffff;
+    --bg-surface:#e8edf2;
+    --bg-hover:#dce3eb;
+    --border:#d0d7de;
+    --accent:#2da44e;
+    --text-primary:#1f2328;
+    --text-secondary:#656d76;
+    --shadow:0 8px 24px rgba(0,0,0,.08);
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
@@ -56,11 +78,16 @@ body.sidebar-collapsed .app-shell{grid-template-columns:var(--sidebar-collapsed-
     border-right:1px solid var(--border);
     display:flex;
     flex-direction:column;
-    min-height:100vh;
+    height:100vh;
     overflow:hidden;
     position:relative;
     z-index:30;
     transition:transform .25s ease,width .25s ease;
+}
+.sidebar > nav{
+    flex:1;
+    overflow-y:auto;
+    overflow-x:hidden;
 }
 .sidebar-header{
     padding:1.4rem 1.25rem 1rem;
@@ -141,6 +168,37 @@ body.sidebar-collapsed .app-shell{grid-template-columns:var(--sidebar-collapsed-
     padding:1rem 1.25rem 1.35rem;
     color:var(--text-secondary);
     font-size:.82rem;
+    flex-shrink:0;
+}
+.theme-picker{
+    display:flex;
+    gap:.35rem;
+    margin-top:.7rem;
+}
+.theme-picker-label{
+    font-size:.72rem;
+    text-transform:uppercase;
+    letter-spacing:.06em;
+    color:var(--text-secondary);
+    margin-bottom:.25rem;
+}
+.theme-btn{
+    flex:1;
+    padding:.35rem 0;
+    border:1px solid var(--border);
+    border-radius:.45rem;
+    background:transparent;
+    color:var(--text-secondary);
+    font-size:.78rem;
+    text-align:center;
+    transition:background .2s,color .2s,border-color .2s;
+    cursor:pointer;
+}
+.theme-btn:hover{background:var(--bg-hover);color:var(--text-primary)}
+.theme-btn.is-active{
+    background:var(--bg-surface);
+    color:var(--accent);
+    border-color:var(--accent);
 }
 body.sidebar-collapsed .sidebar-brand-text,
 body.sidebar-collapsed .sidebar-caption,
@@ -951,6 +1009,19 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
     font-weight:800;
     margin-top:.35rem;
 }
+.stat-sub{
+    font-size:.85rem;
+    color:var(--text-secondary);
+    margin-top:.15rem;
+}
+.data-table th{
+    color:var(--text-secondary);
+    font-weight:600;
+    border-bottom:1px solid var(--border);
+}
+.data-table td{
+    border-bottom:1px solid var(--bg-tertiary);
+}
 .settings-actions,
 .badge-row,
 .preference-actions,
@@ -1394,6 +1465,265 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
         min-width:640px;
     }
 }
+/* ── Timers page ── */
+.timers-toolbar{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:.75rem;
+    margin-bottom:1rem;
+}
+.timers-table-wrap{
+    overflow-x:auto;
+    border:1px solid var(--border);
+    border-radius:14px;
+    background:var(--bg-surface);
+}
+.timers-table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:.875rem;
+}
+.timers-table th,
+.timers-table td{
+    padding:.65rem .85rem;
+    text-align:left;
+    white-space:nowrap;
+    border-bottom:1px solid var(--border);
+}
+.timers-table th{
+    color:var(--text-secondary);
+    font-weight:600;
+    font-size:.78rem;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+    background:rgba(15,52,96,.42);
+}
+.timers-table tbody tr:last-child td{
+    border-bottom:none;
+}
+.timers-table tbody tr:hover{
+    background:rgba(255,255,255,.03);
+}
+.timer-name{
+    font-weight:600;
+    color:var(--text-primary);
+}
+.timer-description{
+    font-weight:400;
+    color:var(--text-secondary);
+    font-size:.8rem;
+    white-space:normal;
+    max-width:200px;
+}
+.timer-actions{
+    display:flex;
+    gap:.4rem;
+    align-items:center;
+}
+.timer-actions button{
+    padding:.3rem .6rem;
+    font-size:.78rem;
+    border-radius:8px;
+    cursor:pointer;
+    border:1px solid var(--border);
+    background:var(--bg-surface);
+    color:var(--text-primary);
+    transition:background .15s,border-color .15s;
+}
+.timer-actions button:hover{
+    background:rgba(255,255,255,.08);
+    border-color:var(--accent);
+}
+.timer-actions button.is-danger:hover{
+    border-color:#ff5555;
+    color:#ff5555;
+}
+.timer-actions button.is-run{
+    border-color:rgba(80,250,123,.4);
+    color:var(--accent);
+}
+.timer-badge{
+    display:inline-block;
+    padding:.18rem .55rem;
+    border-radius:999px;
+    font-size:.75rem;
+    font-weight:600;
+    letter-spacing:.02em;
+}
+.timer-badge.is-enabled{
+    background:rgba(80,250,123,.15);
+    color:var(--accent);
+}
+.timer-badge.is-disabled{
+    background:rgba(255,255,255,.06);
+    color:var(--text-secondary);
+}
+.timer-badge.is-failed{
+    background:rgba(255,85,85,.15);
+    color:#ff5555;
+}
+.timer-badge.is-success{
+    background:rgba(80,250,123,.15);
+    color:var(--accent);
+}
+.timer-badge.is-running{
+    background:rgba(189,147,249,.15);
+    color:#bd93f9;
+}
+/* Timer modal */
+.timer-modal-overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.6);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    z-index:9000;
+    padding:1rem;
+}
+.timer-modal{
+    background:var(--bg-panel);
+    border:1px solid var(--border);
+    border-radius:16px;
+    width:100%;
+    max-width:600px;
+    max-height:85vh;
+    overflow-y:auto;
+    padding:1.5rem;
+}
+.timer-modal h2{
+    margin:0 0 1rem 0;
+    font-size:1.15rem;
+}
+.timer-form-group{
+    margin-bottom:.85rem;
+}
+.timer-form-group label{
+    display:block;
+    font-size:.82rem;
+    font-weight:600;
+    color:var(--text-secondary);
+    margin-bottom:.3rem;
+}
+.timer-form-group input[type="text"],
+.timer-form-group input[type="number"],
+.timer-form-group input[type="datetime-local"],
+.timer-form-group textarea,
+.timer-form-group select{
+    width:100%;
+    padding:.55rem .75rem;
+    border:1px solid var(--border);
+    border-radius:10px;
+    background:var(--bg-surface);
+    color:var(--text-primary);
+    font-size:.875rem;
+    font-family:inherit;
+    box-sizing:border-box;
+}
+.timer-form-group textarea{
+    min-height:70px;
+    resize:vertical;
+}
+.timer-form-row{
+    display:flex;
+    gap:.75rem;
+    flex-wrap:wrap;
+}
+.timer-form-row .timer-form-group{
+    flex:1;
+    min-width:120px;
+}
+.timer-radio-group{
+    display:flex;
+    gap:1rem;
+    padding:.35rem 0;
+}
+.timer-radio-group label{
+    display:inline-flex;
+    align-items:center;
+    gap:.35rem;
+    font-size:.875rem;
+    color:var(--text-primary);
+    cursor:pointer;
+    font-weight:400;
+}
+.timer-cron-presets{
+    margin-top:.35rem;
+}
+.timer-cron-presets select{
+    width:100%;
+    padding:.45rem .65rem;
+    border:1px solid var(--border);
+    border-radius:10px;
+    background:var(--bg-surface);
+    color:var(--text-secondary);
+    font-size:.8rem;
+}
+.timer-modal-actions{
+    display:flex;
+    justify-content:flex-end;
+    gap:.65rem;
+    margin-top:1.25rem;
+    padding-top:1rem;
+    border-top:1px solid var(--border);
+}
+@media(max-width:768px){
+    .timers-table th:nth-child(n+5),
+    .timers-table td:nth-child(n+5){
+        display:none;
+    }
+    .timer-form-row{
+        flex-direction:column;
+    }
+}
+.model-status-indicator{
+    padding:0.75rem 1rem;
+    border-radius:8px;
+    margin-bottom:0.75rem;
+    font-size:0.9rem;
+    line-height:1.5;
+}
+.model-status-loading{
+    background:var(--surface);
+    display:flex;
+    align-items:center;
+    gap:0.5rem;
+}
+.model-status-success{
+    background:rgba(80,250,123,0.1);
+    border:1px solid rgba(80,250,123,0.3);
+}
+.model-status-error{
+    background:rgba(255,85,85,0.1);
+    border:1px solid rgba(255,85,85,0.3);
+}
+.restart-section{
+    margin-top:1.5rem;
+    padding-top:1.5rem;
+    border-top:1px solid var(--border);
+}
+.restart-status{
+    padding:0.75rem 1rem;
+    border-radius:8px;
+    margin-top:0.75rem;
+    font-size:0.9rem;
+}
+.restart-status-restarting{
+    background:rgba(255,184,108,0.1);
+    border:1px solid rgba(255,184,108,0.3);
+    display:flex;
+    align-items:center;
+    gap:0.5rem;
+}
+.restart-status-polling{
+    background:rgba(80,250,123,0.1);
+    border:1px solid rgba(80,250,123,0.3);
+    display:flex;
+    align-items:center;
+    gap:0.5rem;
+}
 </style>
 </head>
 <body>
@@ -1405,7 +1735,7 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
             <div class="sidebar-brand">
                 <div class="sidebar-mark" aria-hidden="true">OV</div>
                 <div class="sidebar-brand-text">
-                    <div class="sidebar-brand-title">OpenVEPA</div>
+                    <div class="sidebar-brand-title" id="sidebarBrandTitle">OpenVEPA</div>
                     <div class="sidebar-brand-subtitle">WebUI Navigation</div>
                 </div>
             </div>
@@ -1415,7 +1745,12 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
             <ul class="nav-list" id="navList"></ul>
         </nav>
         <div class="sidebar-footer">
-            Dark shell scaffold ready for feature-specific pages and SignalR chat wiring.
+            <div class="theme-picker-label">Theme</div>
+            <div class="theme-picker" id="themePicker">
+                <button type="button" class="theme-btn" data-theme-pref="light" title="Light theme">☀️</button>
+                <button type="button" class="theme-btn" data-theme-pref="dark" title="Dark theme">🌙</button>
+                <button type="button" class="theme-btn" data-theme-pref="system" title="System theme">💻</button>
+            </div>
         </div>
     </aside>
 
@@ -1429,7 +1764,7 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
                 </button>
                 <div class="topbar-brand">
                     <div class="topbar-brand-row">
-                        <span class="topbar-title">OpenVEPA</span>
+                        <span class="topbar-title" id="topbarTitle">OpenVEPA</span>
                         <span class="topbar-page" id="pageTitle">Home</span>
                     </div>
                     <div class="topbar-subtitle" id="pageSubtitle">Chat with your assistant in the main workspace.</div>
@@ -1450,6 +1785,42 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
 <script>
 (function(){
     'use strict';
+
+    /* ── Theme management ── */
+    function getSystemTheme(){
+        return window.matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light';
+    }
+
+    function applyTheme(preference){
+        var theme = preference === 'system' ? getSystemTheme() : preference;
+        document.documentElement.setAttribute('data-theme', theme);
+        try { localStorage.setItem('openvepa-theme', preference); } catch(e){}
+        syncThemePicker(preference);
+    }
+
+    function syncThemePicker(preference){
+        var btns = document.querySelectorAll('.theme-btn');
+        for(var i = 0; i < btns.length; i++){
+            if(btns[i].getAttribute('data-theme-pref') === preference){
+                btns[i].classList.add('is-active');
+            } else {
+                btns[i].classList.remove('is-active');
+            }
+        }
+    }
+
+    function initTheme(){
+        var saved = 'system';
+        try { saved = localStorage.getItem('openvepa-theme') || 'system'; } catch(e){}
+        applyTheme(saved);
+        window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change', function(){
+            var pref = 'system';
+            try { pref = localStorage.getItem('openvepa-theme') || 'system'; } catch(e){}
+            if(pref === 'system') applyTheme('system');
+        });
+    }
+
+    initTheme();
 
     var routes = [
         {
@@ -1475,6 +1846,13 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
             render:renderLlmSettingsPage
         },
         {
+            hash:'#/usage',
+            title:'Usage',
+            icon:'📊',
+            description:'LLM usage statistics and cost tracking.',
+            render:renderUsagePage
+        },
+        {
             hash:'#/agents',
             title:'Agents',
             icon:'🕵️',
@@ -1494,6 +1872,13 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
             icon:'📡',
             description:'Configure external messaging connectors.',
             render:renderChannelsPage
+        },
+        {
+            hash:'#/timers',
+            title:'Timers',
+            icon:'⏰',
+            description:'Manage scheduled tasks and automated prompts.',
+            render:renderTimersPage
         },
         {
             hash:'#/user-settings',
@@ -1616,7 +2001,7 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
         var prefix = '#/user-settings/';
         if(hash.indexOf(prefix) === 0){
             var tab = hash.substring(prefix.length).split('/')[0];
-            if(tab === 'profile' || tab === 'preferences' || tab === 'tokens'){
+            if(tab === 'profile' || tab === 'preferences' || tab === 'tokens' || tab === 'system'){
                 return tab;
             }
         }
@@ -2875,7 +3260,13 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
             isLoading:false,
             isSaving:false,
             message:'',
-            error:''
+            error:'',
+            modelStatus:null,
+            modelStatusLoading:false,
+            addFetchStatus:null,
+            addFetchedModels:null,
+            editFetchStatus:null,
+            editFetchedModels:null
         },
         agents:{
             items:null,
@@ -2918,7 +3309,8 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
             isLoading:false,
             isMutating:false,
             message:'',
-            error:''
+            error:'',
+            assistantName:'VEPA'
         },
         tokens:{
             items:null,
@@ -2938,6 +3330,24 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
             isSaving:false,
             message:'',
             error:''
+        },
+        timers:{
+            tasks:[],
+            loading:false,
+            editingTask:null,
+            showModal:false
+        },
+        restart:{
+            isRestarting:false,
+            polling:false,
+            message:''
+        },
+        usage:{
+            data:null,
+            loading:false,
+            error:'',
+            period:'all',
+            expandedAgents:{}
         }
     };
 
@@ -3282,20 +3692,28 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
     <header class='page-header'>
         <div>
             <h1>LLM Settings</h1>
-            <p>Review the current provider configuration, update provider defaults, and monitor aggregate model usage from the WebUI.</p>
+            <p>Review the current provider configuration and update provider defaults.</p>
         </div>
         <span class='pill'>Provider configuration</span>
     </header>
     <div class='settings-grid'>
         <section class='card settings-card' id='llmConfigCard'>${renderLoadingPanel('Loading LLM configuration…')}</section>
-        <section class='card settings-card' id='llmUsageCard'>${renderLoadingPanel('Loading usage statistics…')}</section>
+        <section class='card settings-card' id='llmUsageCard'>
+            <div class='section-heading'>
+                <div>
+                    <h2>Usage statistics</h2>
+                    <p>Detailed usage tracking has moved to its own page.</p>
+                </div>
+            </div>
+            <a href='#/usage' class='primary-button' style='display:inline-block;text-decoration:none;margin-top:0.5rem'>View detailed usage &#8594;</a>
+        </section>
     </div>
 </section>`;
     }
 
     function initLlmSettingsPage(){
         renderLlmSettingsPanels();
-        if(!dashboardState.llm.config || !dashboardState.llm.usage){
+        if(!dashboardState.llm.config){
             loadLlmSettings(false);
         }
     }
@@ -3305,7 +3723,7 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         if(state.isLoading){
             return Promise.resolve();
         }
-        if(!force && state.config && state.usage){
+        if(!force && state.config){
             renderLlmSettingsPanels();
             return Promise.resolve();
         }
@@ -3314,12 +3732,8 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         state.error = '';
         renderLlmSettingsPanels();
 
-        return Promise.all([
-            apiRequest('/api/system/llm-config'),
-            apiRequest('/api/system/llm-usage')
-        ]).then(function(results){
-            state.config = results[0];
-            state.usage = results[1];
+        return apiRequest('/api/system/llm-config').then(function(result){
+            state.config = result;
         }).catch(function(error){
             state.error = error.message;
         }).finally(function(){
@@ -3328,14 +3742,11 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         });
     }
 
-    function renderLlmProviderOptions(selectedProvider, excludeNames){
+    function renderLlmProviderOptions(selectedType){
         var html = '';
         for(var i=0;i<llmProviders.length;i++){
             var provider = llmProviders[i];
-            if(excludeNames && excludeNames.indexOf(provider) >= 0){
-                continue;
-            }
-            html += '<option value="'+escapeHtml(provider)+'"'+(provider === selectedProvider ? ' selected' : '')+'>'+escapeHtml(provider)+'</option>';
+            html += '<option value="'+escapeHtml(provider)+'"'+(provider === selectedType ? ' selected' : '')+'>'+escapeHtml(provider)+'</option>';
         }
         return html;
     }
@@ -3377,27 +3788,54 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         html += '<button type="button" class="primary-button" id="llmAddProviderButton"' + (state.isSaving ? ' disabled' : '') + '>Add Provider</button>';
         html += '</div>';
         html += '</div>';
+        html += '<div id="llmModelStatusArea">' + renderModelStatusIndicator() + '</div>';
+        html += '<div style="margin-bottom:0.75rem"><button type="button" class="secondary-button" id="llmTestConnectionButton"' + (state.modelStatusLoading || state.isSaving ? ' disabled' : '') + '>' + (state.modelStatusLoading ? 'Testing…' : 'Test Connection') + '</button></div>';
         html += banner;
 
         if(state.addingProvider){
-            var draft = state.addDraft || {name:llmProviders[0],modelId:'',endpoint:''};
+            var draft = state.addDraft || {type:llmProviders[0],displayName:'',modelId:'',endpoint:'',apiKey:''};
             html += '<div class="provider-card" style="border-color:var(--accent)">';
             html += '<div class="section-heading"><div><h2>Add new provider</h2></div></div>';
             html += '<div class="field">';
-            html += '<span>Provider</span>';
-            html += '<select id="llmNewProviderSelect" class="control"' + (state.isSaving ? ' disabled' : '') + '>' + renderLlmProviderOptions(draft.name, getConfiguredProviderNames()) + '</select>';
+            html += '<span>Provider Type</span>';
+            html += '<select id="llmNewProviderSelect" class="control"' + (state.isSaving ? ' disabled' : '') + '>' + renderLlmProviderOptions(draft.type) + '</select>';
+            html += '</div>';
+            html += '<div class="field">';
+            html += '<span>Display Name</span>';
+            html += '<input id="llmNewDisplayNameInput" class="control" type="text" value="'+escapeHtml(draft.displayName)+'" placeholder="e.g. Ollama Home"' + (state.isSaving ? ' disabled' : '') + '>';
             html += '</div>';
             html += '<div class="field">';
             html += '<span>Model</span>';
-            html += '<input id="llmNewModelInput" class="control" type="text" value="'+escapeHtml(draft.modelId)+'" placeholder="model-id"' + (state.isSaving ? ' disabled' : '') + '>';
+            html += '<div style="display:flex;gap:0.5rem;align-items:flex-start">';
+            if(state.addFetchedModels && state.addFetchedModels.length > 0){
+                html += '<select id="llmNewModelSelect" class="control" style="flex:1;margin-bottom:0"' + (state.isSaving ? ' disabled' : '') + '>';
+                for(var mi=0;mi<state.addFetchedModels.length;mi++){
+                    var m = state.addFetchedModels[mi];
+                    html += '<option value="'+escapeHtml(m)+'"' + (m === draft.modelId ? ' selected' : '') + '>' + escapeHtml(m) + '</option>';
+                }
+                html += '<option value="__custom__">\u2014 Custom model \u2014</option>';
+                html += '</select>';
+            } else {
+                html += '<input id="llmNewModelInput" class="control" style="flex:1;margin-bottom:0" type="text" value="'+escapeHtml(draft.modelId)+'" placeholder="model-id"' + (state.isSaving ? ' disabled' : '') + '>';
+            }
+            html += '<button type="button" class="secondary-button" id="llmNewFetchModelsBtn" style="white-space:nowrap"' + (state.isSaving || (state.addFetchStatus && state.addFetchStatus.type === 'loading') ? ' disabled' : '') + '>' + (state.addFetchStatus && state.addFetchStatus.type === 'loading' ? 'Fetching\u2026' : 'Fetch Models') + '</button>';
+            html += '</div>';
+            if(state.addFetchedModels && state.addFetchedModels.length > 0){
+                html += '<input id="llmNewModelCustom" class="control hidden" type="text" value="'+escapeHtml(draft.modelId)+'" placeholder="Enter custom model name" style="margin-top:0.5rem">';
+            }
+            html += renderProviderFetchStatus(state.addFetchStatus);
             html += '</div>';
             html += '<div class="field">';
             html += '<span>Endpoint</span>';
             html += '<input id="llmNewEndpointInput" class="control" type="url" value="'+escapeHtml(draft.endpoint)+'" placeholder="https://api.example.com/v1"' + (state.isSaving ? ' disabled' : '') + '>';
             html += '</div>';
+            html += '<div class="field">';
+            html += '<span>API Key <span style="font-weight:normal;opacity:0.7">(optional)</span></span>';
+            html += '<input id="llmNewApiKeyInput" class="control" type="password" value="'+escapeHtml(draft.apiKey)+'" placeholder="sk-..."' + (state.isSaving ? ' disabled' : '') + '>';
+            html += '</div>';
             html += '<div class="provider-actions">';
             html += '<button type="button" class="secondary-button" id="llmCancelAddButton"' + (state.isSaving ? ' disabled' : '') + '>Cancel</button>';
-            html += '<button type="button" class="primary-button" id="llmSaveAddButton"' + (state.isSaving ? ' disabled' : '') + '>' + (state.isSaving ? 'Saving…' : 'Add') + '</button>';
+            html += '<button type="button" class="primary-button" id="llmSaveAddButton"' + (state.isSaving ? ' disabled' : '') + '>' + (state.isSaving ? 'Saving\u2026' : 'Add') + '</button>';
             html += '</div>';
             html += '</div>';
         }
@@ -3410,28 +3848,55 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
 
             html += '<div class="provider-card' + (isDefault ? ' provider-default' : '') + '">';
             html += '<div class="provider-header">';
-            html += '<span class="provider-name">' + escapeHtml(p.name) + '</span>';
+            html += '<span class="provider-name">' + escapeHtml(p.displayName || p.name) + '</span>';
+            html += '<span class="pill" style="background:var(--surface-raised);color:var(--text-secondary);font-size:0.78em">' + escapeHtml(p.type || p.name) + '</span>';
             if(isDefault){
                 html += '<span class="pill">Default</span>';
             }
             html += '</div>';
 
             if(isEditing){
-                var draft = state.editDraft || {modelId:p.modelId||'',endpoint:p.endpoint||''};
+                var draft = state.editDraft || {displayName:p.displayName||'',modelId:p.modelId||'',endpoint:p.endpoint||'',apiKey:''};
+                html += '<div class="field">';
+                html += '<span>Display Name</span>';
+                html += '<input class="control llm-edit-displayname" type="text" value="'+escapeHtml(draft.displayName)+'" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>';
+                html += '</div>';
                 html += '<div class="field">';
                 html += '<span>Model</span>';
-                html += '<input class="control llm-edit-model" type="text" value="'+escapeHtml(draft.modelId)+'" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>';
+                html += '<div style="display:flex;gap:0.5rem;align-items:flex-start">';
+                if(state.editFetchedModels && state.editFetchedModels.length > 0){
+                    html += '<select class="control llm-edit-model-select" style="flex:1;margin-bottom:0" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>';
+                    for(var emi=0;emi<state.editFetchedModels.length;emi++){
+                        var em = state.editFetchedModels[emi];
+                        html += '<option value="'+escapeHtml(em)+'"' + (em === draft.modelId ? ' selected' : '') + '>' + escapeHtml(em) + '</option>';
+                    }
+                    html += '<option value="__custom__">\u2014 Custom model \u2014</option>';
+                    html += '</select>';
+                } else {
+                    html += '<input class="control llm-edit-model" style="flex:1;margin-bottom:0" type="text" value="'+escapeHtml(draft.modelId)+'" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>';
+                }
+                html += '<button type="button" class="secondary-button llm-edit-fetch-btn" style="white-space:nowrap" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving || (state.editFetchStatus && state.editFetchStatus.type === 'loading') ? ' disabled' : '') + '>' + (state.editFetchStatus && state.editFetchStatus.type === 'loading' ? 'Fetching\u2026' : 'Fetch Models') + '</button>';
+                html += '</div>';
+                if(state.editFetchedModels && state.editFetchedModels.length > 0){
+                    html += '<input class="control llm-edit-model-custom hidden" type="text" value="'+escapeHtml(draft.modelId)+'" data-provider="'+escapeHtml(p.name)+'" placeholder="Enter custom model name" style="margin-top:0.5rem">';
+                }
+                html += renderProviderFetchStatus(state.editFetchStatus);
                 html += '</div>';
                 html += '<div class="field">';
                 html += '<span>Endpoint</span>';
                 html += '<input class="control llm-edit-endpoint" type="url" value="'+escapeHtml(draft.endpoint)+'" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>';
                 html += '</div>';
+                html += '<div class="field">';
+                html += '<span>API Key <span style="font-weight:normal;opacity:0.7">(optional)</span></span>';
+                html += '<input class="control llm-edit-apikey" type="password" value="'+escapeHtml(draft.apiKey)+'" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>';
+                html += '</div>';
                 html += '<div class="provider-actions">';
                 html += '<button type="button" class="secondary-button llm-cancel-edit"' + (state.isSaving ? ' disabled' : '') + '>Cancel</button>';
-                html += '<button type="button" class="primary-button llm-save-edit" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>' + (state.isSaving ? 'Saving…' : 'Save') + '</button>';
+                html += '<button type="button" class="primary-button llm-save-edit" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>' + (state.isSaving ? 'Saving\u2026' : 'Save') + '</button>';
                 html += '</div>';
             } else {
                 html += '<div class="provider-meta">';
+                html += '<div class="provider-meta-row"><span class="provider-meta-label">Instance</span><span class="provider-meta-value" style="opacity:0.7;font-size:0.9em">' + escapeHtml(p.name) + '</span></div>';
                 html += '<div class="provider-meta-row"><span class="provider-meta-label">Model</span><span class="provider-meta-value">' + escapeHtml(p.modelId || 'unknown') + '</span></div>';
                 html += '<div class="provider-meta-row"><span class="provider-meta-label">Endpoint</span><span class="provider-meta-value">' + escapeHtml(p.endpoint || 'Not configured') + '</span></div>';
                 html += '</div>';
@@ -3472,7 +3937,7 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
                 "data-llm-action='refresh'");
         }
 
-        return `
+        var html = `
 <div class='section-heading'>
     <div>
         <h2>Usage summary</h2>
@@ -3503,33 +3968,98 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         <div class='stat-label'>Estimated cost</div>
         <div class='stat-value'>${formatCurrency(usage.totalCostUsd)}</div>
     </div>
-</div>
-<p class='helper-text'>The server currently returns the full summary. Query filters such as provider and date ranges are available to future UI refinements.</p>`;
+</div>`;
+
+        // Time period breakdown
+        if(usage.last24Hours || usage.last7Days || usage.last30Days){
+            html += `
+<h3 style='margin:1.25rem 0 0.5rem'>Activity by period</h3>
+<div class='stats-grid'>`;
+            if(usage.last24Hours){
+                html += `
+    <div class='stat-card'>
+        <div class='stat-label'>Last 24 hours</div>
+        <div class='stat-value'>${formatNumber(usage.last24Hours.calls)} calls</div>
+        <div class='stat-sub'>${formatCurrency(usage.last24Hours.costUsd)}</div>
+    </div>`;
+            }
+            if(usage.last7Days){
+                html += `
+    <div class='stat-card'>
+        <div class='stat-label'>Last 7 days</div>
+        <div class='stat-value'>${formatNumber(usage.last7Days.calls)} calls</div>
+        <div class='stat-sub'>${formatCurrency(usage.last7Days.costUsd)}</div>
+    </div>`;
+            }
+            if(usage.last30Days){
+                html += `
+    <div class='stat-card'>
+        <div class='stat-label'>Last 30 days</div>
+        <div class='stat-value'>${formatNumber(usage.last30Days.calls)} calls</div>
+        <div class='stat-sub'>${formatCurrency(usage.last30Days.costUsd)}</div>
+    </div>`;
+            }
+            html += '</div>';
+        }
+
+        // Provider/model breakdown table
+        if(usage.byProvider && usage.byProvider.length > 0){
+            html += `
+<h3 style='margin:1.25rem 0 0.5rem'>Breakdown by provider / model</h3>
+<div style='overflow-x:auto'>
+<table class='data-table' style='width:100%;border-collapse:collapse;font-size:0.92em'>
+<thead><tr>
+    <th style='text-align:left;padding:0.4rem 0.6rem'>Provider</th>
+    <th style='text-align:left;padding:0.4rem 0.6rem'>Model</th>
+    <th style='text-align:right;padding:0.4rem 0.6rem'>Calls</th>
+    <th style='text-align:right;padding:0.4rem 0.6rem'>Input tokens</th>
+    <th style='text-align:right;padding:0.4rem 0.6rem'>Output tokens</th>
+    <th style='text-align:right;padding:0.4rem 0.6rem'>Cost</th>
+    <th style='text-align:left;padding:0.4rem 0.6rem;width:30%'></th>
+</tr></thead><tbody>`;
+
+            var maxCalls = 0;
+            for(var i=0;i<usage.byProvider.length;i++){
+                if(usage.byProvider[i].calls > maxCalls) maxCalls = usage.byProvider[i].calls;
+            }
+
+            for(var i=0;i<usage.byProvider.length;i++){
+                var row = usage.byProvider[i];
+                var pct = maxCalls > 0 ? Math.round((row.calls / maxCalls) * 100) : 0;
+                html += '<tr>';
+                html += '<td style="padding:0.4rem 0.6rem">' + escapeHtml(row.provider) + '</td>';
+                html += '<td style="padding:0.4rem 0.6rem"><code>' + escapeHtml(row.model) + '</code></td>';
+                html += '<td style="text-align:right;padding:0.4rem 0.6rem">' + formatNumber(row.calls) + '</td>';
+                html += '<td style="text-align:right;padding:0.4rem 0.6rem">' + formatNumber(row.inputTokens) + '</td>';
+                html += '<td style="text-align:right;padding:0.4rem 0.6rem">' + formatNumber(row.outputTokens) + '</td>';
+                html += '<td style="text-align:right;padding:0.4rem 0.6rem">' + formatCurrency(row.estimatedCostUsd) + '</td>';
+                html += '<td style="padding:0.4rem 0.6rem"><div style="background:var(--bg-tertiary);border-radius:4px;height:8px;overflow:hidden"><div style="background:var(--accent);height:100%;width:' + pct + '%"></div></div></td>';
+                html += '</tr>';
+            }
+            html += '</tbody></table></div>';
+        }
+
+        html += '<p class="helper-text">Cost estimates are approximate and based on published provider pricing.</p>';
+        return html;
     }
 
     function renderLlmSettingsPanels(){
         var configCard = document.getElementById('llmConfigCard');
-        var usageCard = document.getElementById('llmUsageCard');
-        if(!configCard || !usageCard){
+        if(!configCard){
             return;
         }
 
         configCard.innerHTML = renderLlmConfigCard();
-        usageCard.innerHTML = renderLlmUsageCard();
 
         var refreshButton = document.getElementById('llmRefreshButton');
         if(refreshButton){
             refreshButton.onclick = function(){ loadLlmSettings(true); };
         }
-        var usageRefreshButton = document.getElementById('llmUsageRefreshButton');
-        if(usageRefreshButton){
-            usageRefreshButton.onclick = function(){ loadLlmSettings(true); };
-        }
         var addProviderButton = document.getElementById('llmAddProviderButton');
         if(addProviderButton){
             addProviderButton.onclick = function(){
                 dashboardState.llm.addingProvider = true;
-                dashboardState.llm.addDraft = {name:llmProviders[0],modelId:'',endpoint:''};
+                dashboardState.llm.addDraft = {type:llmProviders[0],displayName:'',modelId:'',endpoint:'',apiKey:''};
                 dashboardState.llm.error = '';
                 renderLlmSettingsPanels();
             };
@@ -3539,6 +4069,8 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
             cancelAddButton.onclick = function(){
                 dashboardState.llm.addingProvider = false;
                 dashboardState.llm.addDraft = null;
+                dashboardState.llm.addFetchStatus = null;
+                dashboardState.llm.addFetchedModels = null;
                 dashboardState.llm.error = '';
                 renderLlmSettingsPanels();
             };
@@ -3546,6 +4078,29 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         var saveAddButton = document.getElementById('llmSaveAddButton');
         if(saveAddButton){
             saveAddButton.onclick = saveNewProvider;
+        }
+        var newFetchBtn = document.getElementById('llmNewFetchModelsBtn');
+        if(newFetchBtn){
+            newFetchBtn.onclick = function(){
+                var sel = document.getElementById('llmNewProviderSelect');
+                var epInput = document.getElementById('llmNewEndpointInput');
+                var akInput = document.getElementById('llmNewApiKeyInput');
+                if(sel && epInput){
+                    fetchProviderModels('add', sel.value, epInput.value.trim(), akInput ? akInput.value.trim() : '');
+                }
+            };
+        }
+        var newModelSelect = document.getElementById('llmNewModelSelect');
+        if(newModelSelect){
+            newModelSelect.onchange = function(){
+                var customInput = document.getElementById('llmNewModelCustom');
+                if(this.value === '__custom__'){
+                    if(customInput) customInput.classList.remove('hidden');
+                } else {
+                    if(customInput) customInput.classList.add('hidden');
+                    if(dashboardState.llm.addDraft) dashboardState.llm.addDraft.modelId = this.value;
+                }
+            };
         }
 
         var editButtons = document.querySelectorAll('.llm-edit-provider');
@@ -3555,7 +4110,7 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
                 var config = dashboardState.llm.config;
                 var existing = (config && config.providers || []).filter(function(p){ return p.name === providerName; })[0];
                 dashboardState.llm.editingProvider = providerName;
-                dashboardState.llm.editDraft = {modelId:(existing && existing.modelId)||'',endpoint:(existing && existing.endpoint)||''};
+                dashboardState.llm.editDraft = {displayName:(existing && existing.displayName)||'',modelId:(existing && existing.modelId)||'',endpoint:(existing && existing.endpoint)||'',apiKey:''};
                 dashboardState.llm.error = '';
                 renderLlmSettingsPanels();
             };
@@ -3565,6 +4120,8 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
             cancelEditButtons[ci].onclick = function(){
                 dashboardState.llm.editingProvider = null;
                 dashboardState.llm.editDraft = null;
+                dashboardState.llm.editFetchStatus = null;
+                dashboardState.llm.editFetchedModels = null;
                 dashboardState.llm.error = '';
                 renderLlmSettingsPanels();
             };
@@ -3573,6 +4130,29 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         for(var si=0;si<saveEditButtons.length;si++){
             saveEditButtons[si].onclick = function(){
                 saveEditedProvider(this.getAttribute('data-provider'));
+            };
+        }
+        var editFetchButtons = document.querySelectorAll('.llm-edit-fetch-btn');
+        for(var efi=0;efi<editFetchButtons.length;efi++){
+            editFetchButtons[efi].onclick = function(){
+                var pn = this.getAttribute('data-provider');
+                var epInput = document.querySelector('.llm-edit-endpoint[data-provider="'+pn+'"]');
+                if(epInput){
+                    fetchProviderModels('edit', pn, epInput.value.trim());
+                }
+            };
+        }
+        var editModelSelects = document.querySelectorAll('.llm-edit-model-select');
+        for(var emsi=0;emsi<editModelSelects.length;emsi++){
+            editModelSelects[emsi].onchange = function(){
+                var pn = this.getAttribute('data-provider');
+                var customInput = document.querySelector('.llm-edit-model-custom[data-provider="'+pn+'"]');
+                if(this.value === '__custom__'){
+                    if(customInput) customInput.classList.remove('hidden');
+                } else {
+                    if(customInput) customInput.classList.add('hidden');
+                    if(dashboardState.llm.editDraft) dashboardState.llm.editDraft.modelId = this.value;
+                }
             };
         }
         var setDefaultButtons = document.querySelectorAll('.llm-set-default');
@@ -3592,13 +4172,110 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         for(var ti=0;ti<retryButtons.length;ti++){
             retryButtons[ti].onclick = function(){ loadLlmSettings(true); };
         }
+
+        var testConnectionButton = document.getElementById('llmTestConnectionButton');
+        if(testConnectionButton){
+            testConnectionButton.onclick = function(){ testLlmConnection(); };
+        }
+    }
+
+    function testLlmConnection(providerOverride, endpointOverride){
+        var state = dashboardState.llm;
+        state.modelStatusLoading = true;
+        state.modelStatus = null;
+        renderLlmSettingsPanels();
+
+        var queryParams = [];
+        if(providerOverride){
+            queryParams.push('provider=' + encodeURIComponent(providerOverride));
+        }
+        if(endpointOverride){
+            queryParams.push('endpoint=' + encodeURIComponent(endpointOverride));
+        }
+        var url = '/api/system/models' + (queryParams.length ? '?' + queryParams.join('&') : '');
+
+        apiRequest(url).then(function(result){
+            state.modelStatus = result;
+        }).catch(function(error){
+            state.modelStatus = { success:false, models:[], provider:'unknown', endpoint:'', error:error.message, diagnostics:'Request failed: ' + error.message };
+        }).finally(function(){
+            state.modelStatusLoading = false;
+            renderLlmSettingsPanels();
+        });
+    }
+
+    function renderModelStatusIndicator(){
+        var state = dashboardState.llm;
+        if(state.modelStatusLoading){
+            return '<div class="model-status-indicator model-status-loading"><span class="loading-indicator" aria-hidden="true"><span></span><span></span><span></span></span> <span>Querying models…</span></div>';
+        }
+        if(!state.modelStatus){
+            return '';
+        }
+        var ms = state.modelStatus;
+        if(ms.success){
+            return '<div class="model-status-indicator model-status-success">✅ <strong>Connected</strong> — ' + escapeHtml(ms.diagnostics || (ms.models.length + ' models available.')) + '</div>';
+        }
+        return '<div class="model-status-indicator model-status-error">❌ <strong>Connection failed</strong> — ' + escapeHtml(ms.error || 'Unknown error') + '<br><span class="helper-text">' + escapeHtml(ms.diagnostics || '') + '</span></div>';
+    }
+
+    function renderProviderFetchStatus(fs){
+        if(!fs) return '';
+        if(fs.type === 'loading'){
+            return '<div class="model-status-indicator model-status-loading" style="margin-top:0.5rem"><span class="loading-indicator" aria-hidden="true"><span></span><span></span><span></span></span> <span>Connecting to ' + escapeHtml(fs.provider || 'provider') + ' at ' + escapeHtml(fs.endpoint || '') + '\u2026</span></div>';
+        }
+        if(fs.type === 'success'){
+            return '<div class="model-status-indicator model-status-success" style="margin-top:0.5rem">\u2705 Connected! Found ' + fs.count + ' models available.</div>';
+        }
+        if(fs.type === 'error'){
+            return '<div class="model-status-indicator model-status-error" style="margin-top:0.5rem">\u274c <strong>Could not fetch models</strong> \u2014 ' + escapeHtml(fs.error || 'Unknown error') + (fs.diagnostics ? '<br><span class="helper-text">' + escapeHtml(fs.diagnostics) + '</span>' : '') + '</div>';
+        }
+        return '';
+    }
+
+    function fetchProviderModels(context, provider, endpoint, apiKey){
+        var state = dashboardState.llm;
+        var statusKey = context === 'add' ? 'addFetchStatus' : 'editFetchStatus';
+        var modelsKey = context === 'add' ? 'addFetchedModels' : 'editFetchedModels';
+
+        state[statusKey] = {type:'loading',provider:provider,endpoint:endpoint};
+        state[modelsKey] = null;
+        renderLlmSettingsPanels();
+
+        var queryParams = ['provider=' + encodeURIComponent(provider)];
+        if(endpoint) queryParams.push('endpoint=' + encodeURIComponent(endpoint));
+        if(apiKey) queryParams.push('apiKey=' + encodeURIComponent(apiKey));
+        var url = '/api/system/models?' + queryParams.join('&');
+
+        apiRequest(url).then(function(result){
+            if(result.success && result.models && result.models.length > 0){
+                state[statusKey] = {type:'success',count:result.models.length};
+                state[modelsKey] = result.models;
+                if(context === 'add' && state.addDraft && !state.addDraft.modelId){
+                    state.addDraft.modelId = result.models[0];
+                }
+                if(context === 'edit' && state.editDraft && !state.editDraft.modelId){
+                    state.editDraft.modelId = result.models[0];
+                }
+            } else {
+                state[statusKey] = {type:'error',error:result.error || 'No models returned.',diagnostics:result.diagnostics || ''};
+            }
+        }).catch(function(error){
+            state[statusKey] = {type:'error',error:error.message,diagnostics:'Request failed: ' + error.message};
+        }).finally(function(){
+            renderLlmSettingsPanels();
+        });
     }
 
     function buildFullPayload(defaultProvider, providers){
         return {
             defaultProvider:defaultProvider,
             providers:providers.map(function(p){
-                return {name:p.name,modelId:p.modelId,endpoint:p.endpoint};
+                var entry = {name:p.name,modelId:p.modelId,endpoint:p.endpoint};
+                if(p.displayName) entry.displayName = p.displayName;
+                if(p.type) entry.type = p.type;
+                if(p.apiKey) entry.apiKey = p.apiKey;
+                return entry;
             })
         };
     }
@@ -3633,37 +4310,69 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
     function saveNewProvider(){
         var state = dashboardState.llm;
         var nameSelect = document.getElementById('llmNewProviderSelect');
+        var modelSelect = document.getElementById('llmNewModelSelect');
         var modelInput = document.getElementById('llmNewModelInput');
+        var modelCustom = document.getElementById('llmNewModelCustom');
         var endpointInput = document.getElementById('llmNewEndpointInput');
-        if(!nameSelect || !modelInput || !endpointInput){
+        if(!nameSelect || !endpointInput){
             return;
         }
 
-        var name = nameSelect.value;
-        var modelId = modelInput.value.trim();
+        var providerType = nameSelect.value;
+        var displayNameInput = document.getElementById('llmNewDisplayNameInput');
+        var apiKeyInput = document.getElementById('llmNewApiKeyInput');
+        var modelId = '';
+        if(modelSelect){
+            modelId = modelSelect.value === '__custom__'
+                ? (modelCustom ? modelCustom.value.trim() : '')
+                : modelSelect.value;
+        } else if(modelInput){
+            modelId = modelInput.value.trim();
+        }
         var endpoint = endpointInput.value.trim();
-        if(!name || !modelId || !endpoint){
-            state.error = 'Provider, model, and endpoint are required.';
+        var displayName = displayNameInput ? displayNameInput.value.trim() : '';
+        var apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
+        if(!providerType || !modelId || !endpoint){
+            state.error = 'Provider type, model, and endpoint are required.';
             renderLlmSettingsPanels();
             return;
         }
 
+        // Auto-generate unique instance name from type.
         var config = state.config || {defaultProvider:'unknown',providers:[]};
+        var existingNames = (config.providers || []).map(function(p){ return p.name; });
+        var baseName = providerType;
+        var instanceName = baseName;
+        var counter = 2;
+        while(existingNames.indexOf(instanceName) >= 0){
+            instanceName = baseName + '-' + counter;
+            counter++;
+        }
+
         var providers = (config.providers || []).slice();
-        providers.push({name:name,modelId:modelId,endpoint:endpoint});
+        providers.push({name:instanceName,displayName:displayName||instanceName,type:providerType,modelId:modelId,endpoint:endpoint,apiKey:apiKey});
         var payload = buildFullPayload(config.defaultProvider, providers);
         submitLlmConfig(payload);
     }
 
     function saveEditedProvider(providerName){
         var state = dashboardState.llm;
+        var modelSelect = document.querySelector('.llm-edit-model-select[data-provider="'+providerName+'"]');
         var modelInput = document.querySelector('.llm-edit-model[data-provider="'+providerName+'"]');
+        var modelCustom = document.querySelector('.llm-edit-model-custom[data-provider="'+providerName+'"]');
         var endpointInput = document.querySelector('.llm-edit-endpoint[data-provider="'+providerName+'"]');
-        if(!modelInput || !endpointInput){
+        if(!endpointInput){
             return;
         }
 
-        var modelId = modelInput.value.trim();
+        var modelId = '';
+        if(modelSelect){
+            modelId = modelSelect.value === '__custom__'
+                ? (modelCustom ? modelCustom.value.trim() : '')
+                : modelSelect.value;
+        } else if(modelInput){
+            modelId = modelInput.value.trim();
+        }
         var endpoint = endpointInput.value.trim();
         if(!modelId || !endpoint){
             state.error = 'Model and endpoint are required.';
@@ -3671,10 +4380,15 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
             return;
         }
 
+        var displayNameInput = document.querySelector('.llm-edit-displayname[data-provider="'+providerName+'"]');
+        var apiKeyInput = document.querySelector('.llm-edit-apikey[data-provider="'+providerName+'"]');
+        var displayName = displayNameInput ? displayNameInput.value.trim() : '';
+        var apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
+
         var config = state.config || {defaultProvider:'unknown',providers:[]};
         var providers = (config.providers || []).map(function(p){
             if(p.name === providerName){
-                return {name:p.name,modelId:modelId,endpoint:endpoint};
+                return {name:p.name,displayName:displayName||p.displayName||'',type:p.type||p.name,modelId:modelId,endpoint:endpoint,apiKey:apiKey};
             }
             return p;
         });
@@ -3704,6 +4418,273 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         }
         var payload = buildFullPayload(defaultProv, providers);
         submitLlmConfig(payload);
+    }
+
+    // Usage page.
+    function renderUsagePage(){
+        queuePageInit(initUsagePage);
+        var st = dashboardState.usage;
+        return `
+<!-- Page: Usage -->
+<section class='page-shell'>
+    <header class='page-header'>
+        <div>
+            <h1>Usage</h1>
+            <p>LLM usage statistics and cost tracking across all providers and agents.</p>
+        </div>
+        <span class='pill'>Cost tracking</span>
+    </header>
+    <div id='usageContent'>${st.loading ? renderLoadingPanel('Loading usage statistics\u2026') : ''}</div>
+</section>`;
+    }
+
+    function initUsagePage(){
+        renderUsagePanels();
+        if(!dashboardState.usage.data){
+            loadUsageData(false);
+        }
+    }
+
+    function loadUsageData(force){
+        var state = dashboardState.usage;
+        if(state.loading){
+            return Promise.resolve();
+        }
+        if(!force && state.data){
+            renderUsagePanels();
+            return Promise.resolve();
+        }
+
+        state.loading = true;
+        state.error = '';
+        renderUsagePanels();
+
+        return apiRequest('/api/system/llm-usage').then(function(result){
+            state.data = result;
+        }).catch(function(error){
+            state.error = error.message;
+        }).finally(function(){
+            state.loading = false;
+            renderUsagePanels();
+        });
+    }
+
+    function getUsagePeriodData(){
+        var state = dashboardState.usage;
+        var data = state.data;
+        if(!data) return null;
+        var p = state.period;
+        if(p === '24h') return data.last24Hours || null;
+        if(p === '7d') return data.last7Days || null;
+        if(p === '30d') return data.last30Days || null;
+        return null;
+    }
+
+    function renderUsagePanels(){
+        var el = document.getElementById('usageContent');
+        if(!el) return;
+
+        var state = dashboardState.usage;
+        var data = state.data;
+
+        if(state.loading && !data){
+            el.innerHTML = renderLoadingPanel('Loading usage statistics\u2026');
+            return;
+        }
+        if(!data){
+            el.innerHTML = renderStatusBanner(state.error, 'error') + renderSettingsEmptyState(
+                'Usage data unavailable',
+                'No usage summary could be loaded from the server.',
+                'Retry',
+                "id='usageRetryButton'");
+            var retryBtn = document.getElementById('usageRetryButton');
+            if(retryBtn) retryBtn.onclick = function(){ loadUsageData(true); };
+            return;
+        }
+
+        var period = state.period;
+        var periodData = getUsagePeriodData();
+        var displayCalls = period === 'all' ? data.callCount : (periodData ? periodData.calls : 0);
+        var displayCost = period === 'all' ? data.totalCostUsd : (periodData ? periodData.costUsd : 0);
+        var displayInput = period === 'all' ? data.inputTokens : 0;
+        var displayOutput = period === 'all' ? data.outputTokens : 0;
+
+        var html = '';
+
+        // Period pills
+        html += '<div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem">';
+        var periods = [{key:'24h',label:'24h'},{key:'7d',label:'7d'},{key:'30d',label:'30d'},{key:'all',label:'All Time'}];
+        for(var pi=0;pi<periods.length;pi++){
+            var p = periods[pi];
+            var active = period === p.key;
+            html += '<button type="button" class="' + (active ? 'primary-button' : 'secondary-button') + '" data-usage-period="' + p.key + '" style="font-size:0.85em;padding:0.3rem 0.75rem">' + p.label + '</button>';
+        }
+        html += '<div style="flex:1"></div>';
+        html += '<button type="button" class="secondary-button" id="usageRefreshButton" style="font-size:0.85em;padding:0.3rem 0.75rem">Refresh</button>';
+        html += '</div>';
+
+        // Summary cards
+        html += '<div class="stats-grid">';
+        html += '<div class="stat-card"><div class="stat-label">Total calls</div><div class="stat-value">' + formatNumber(displayCalls) + '</div></div>';
+        if(period === 'all'){
+            html += '<div class="stat-card"><div class="stat-label">Input tokens</div><div class="stat-value">' + formatNumber(displayInput) + '</div></div>';
+            html += '<div class="stat-card"><div class="stat-label">Output tokens</div><div class="stat-value">' + formatNumber(displayOutput) + '</div></div>';
+        }
+        html += '<div class="stat-card"><div class="stat-label">Estimated cost</div><div class="stat-value">' + formatCurrency(displayCost) + '</div></div>';
+        html += '</div>';
+
+        // Time period overview (only show when viewing "all")
+        if(period === 'all' && (data.last24Hours || data.last7Days || data.last30Days)){
+            html += '<h3 style="margin:1.25rem 0 0.5rem">Activity by period</h3>';
+            html += '<div class="stats-grid">';
+            if(data.last24Hours){
+                html += '<div class="stat-card"><div class="stat-label">Last 24 hours</div><div class="stat-value">' + formatNumber(data.last24Hours.calls) + ' calls</div><div class="stat-sub">' + formatCurrency(data.last24Hours.costUsd) + '</div></div>';
+            }
+            if(data.last7Days){
+                html += '<div class="stat-card"><div class="stat-label">Last 7 days</div><div class="stat-value">' + formatNumber(data.last7Days.calls) + ' calls</div><div class="stat-sub">' + formatCurrency(data.last7Days.costUsd) + '</div></div>';
+            }
+            if(data.last30Days){
+                html += '<div class="stat-card"><div class="stat-label">Last 30 days</div><div class="stat-value">' + formatNumber(data.last30Days.calls) + ' calls</div><div class="stat-sub">' + formatCurrency(data.last30Days.costUsd) + '</div></div>';
+            }
+            html += '</div>';
+        }
+
+        // By Provider/Model table
+        if(data.byProvider && data.byProvider.length > 0){
+            html += '<section class="card settings-card" style="margin-top:1.25rem">';
+            html += '<div class="section-heading"><div><h2>By provider / model</h2><p>Combined usage when multiple agents share the same provider and model.</p></div></div>';
+            html += '<div style="overflow-x:auto">';
+            html += '<table class="data-table" style="width:100%;border-collapse:collapse;font-size:0.92em">';
+            html += '<thead><tr>';
+            html += '<th style="text-align:left;padding:0.4rem 0.6rem">Provider</th>';
+            html += '<th style="text-align:left;padding:0.4rem 0.6rem">Model</th>';
+            html += '<th style="text-align:right;padding:0.4rem 0.6rem">Calls</th>';
+            html += '<th style="text-align:right;padding:0.4rem 0.6rem">Input tokens</th>';
+            html += '<th style="text-align:right;padding:0.4rem 0.6rem">Output tokens</th>';
+            html += '<th style="text-align:right;padding:0.4rem 0.6rem">Cost</th>';
+            html += '<th style="text-align:left;padding:0.4rem 0.6rem;width:25%"></th>';
+            html += '</tr></thead><tbody>';
+
+            var maxCost = 0;
+            for(var mi=0;mi<data.byProvider.length;mi++){
+                if(data.byProvider[mi].estimatedCostUsd > maxCost) maxCost = data.byProvider[mi].estimatedCostUsd;
+            }
+
+            for(var ri=0;ri<data.byProvider.length;ri++){
+                var row = data.byProvider[ri];
+                var pct = maxCost > 0 ? Math.round((row.estimatedCostUsd / maxCost) * 100) : 0;
+                html += '<tr>';
+                html += '<td style="padding:0.4rem 0.6rem">' + escapeHtml(row.provider) + '</td>';
+                html += '<td style="padding:0.4rem 0.6rem"><code>' + escapeHtml(row.model) + '</code></td>';
+                html += '<td style="text-align:right;padding:0.4rem 0.6rem">' + formatNumber(row.calls) + '</td>';
+                html += '<td style="text-align:right;padding:0.4rem 0.6rem">' + formatNumber(row.inputTokens) + '</td>';
+                html += '<td style="text-align:right;padding:0.4rem 0.6rem">' + formatNumber(row.outputTokens) + '</td>';
+                html += '<td style="text-align:right;padding:0.4rem 0.6rem">' + formatCurrency(row.estimatedCostUsd) + '</td>';
+                html += '<td style="padding:0.4rem 0.6rem"><div style="background:var(--bg-tertiary);border-radius:4px;height:8px;overflow:hidden"><div style="background:var(--accent);height:100%;width:' + pct + '%"></div></div></td>';
+                html += '</tr>';
+            }
+            html += '</tbody></table></div></section>';
+        }
+
+        // By Agent table
+        if(data.byAgent && data.byAgent.length > 0){
+            html += '<section class="card settings-card" style="margin-top:1.25rem">';
+            html += '<div class="section-heading"><div><h2>By agent</h2><p>Per-agent breakdown showing which agent consumed which provider and model.</p></div></div>';
+            html += '<div style="overflow-x:auto">';
+            html += '<table class="data-table" style="width:100%;border-collapse:collapse;font-size:0.92em">';
+            html += '<thead><tr>';
+            html += '<th style="text-align:left;padding:0.4rem 0.6rem">Agent</th>';
+            html += '<th style="text-align:left;padding:0.4rem 0.6rem">Provider</th>';
+            html += '<th style="text-align:left;padding:0.4rem 0.6rem">Model</th>';
+            html += '<th style="text-align:right;padding:0.4rem 0.6rem">Calls</th>';
+            html += '<th style="text-align:right;padding:0.4rem 0.6rem">Input tokens</th>';
+            html += '<th style="text-align:right;padding:0.4rem 0.6rem">Output tokens</th>';
+            html += '<th style="text-align:right;padding:0.4rem 0.6rem">Cost</th>';
+            html += '</tr></thead><tbody>';
+
+            // Group by agent name
+            var agentGroups = {};
+            var agentOrder = [];
+            for(var ai=0;ai<data.byAgent.length;ai++){
+                var ag = data.byAgent[ai];
+                if(!agentGroups[ag.agentName]){
+                    agentGroups[ag.agentName] = {rows:[],totalCalls:0,totalInput:0,totalOutput:0,totalCost:0};
+                    agentOrder.push(ag.agentName);
+                }
+                agentGroups[ag.agentName].rows.push(ag);
+                agentGroups[ag.agentName].totalCalls += ag.calls;
+                agentGroups[ag.agentName].totalInput += ag.inputTokens;
+                agentGroups[ag.agentName].totalOutput += ag.outputTokens;
+                agentGroups[ag.agentName].totalCost += ag.estimatedCostUsd;
+            }
+
+            // Sort agents by total cost descending
+            agentOrder.sort(function(a,b){ return agentGroups[b].totalCost - agentGroups[a].totalCost; });
+
+            for(var gi=0;gi<agentOrder.length;gi++){
+                var agentName = agentOrder[gi];
+                var group = agentGroups[agentName];
+                var expanded = !!state.expandedAgents[agentName];
+                var toggleAttr = 'data-usage-toggle-agent="' + escapeHtml(agentName) + '"';
+
+                // Agent header row
+                html += '<tr style="background:var(--bg-secondary);cursor:pointer" ' + toggleAttr + '>';
+                html += '<td style="padding:0.4rem 0.6rem;font-weight:600" colspan="3">' + (expanded ? '\u25BC' : '\u25B6') + ' ' + escapeHtml(agentName) + '</td>';
+                html += '<td style="text-align:right;padding:0.4rem 0.6rem;font-weight:600">' + formatNumber(group.totalCalls) + '</td>';
+                html += '<td style="text-align:right;padding:0.4rem 0.6rem;font-weight:600">' + formatNumber(group.totalInput) + '</td>';
+                html += '<td style="text-align:right;padding:0.4rem 0.6rem;font-weight:600">' + formatNumber(group.totalOutput) + '</td>';
+                html += '<td style="text-align:right;padding:0.4rem 0.6rem;font-weight:600">' + formatCurrency(group.totalCost) + '</td>';
+                html += '</tr>';
+
+                // Detail rows (collapsible)
+                if(expanded){
+                    for(var di=0;di<group.rows.length;di++){
+                        var dr = group.rows[di];
+                        html += '<tr style="color:var(--text-secondary)">';
+                        html += '<td style="padding:0.4rem 0.6rem 0.4rem 1.5rem"></td>';
+                        html += '<td style="padding:0.4rem 0.6rem">' + escapeHtml(dr.provider) + '</td>';
+                        html += '<td style="padding:0.4rem 0.6rem"><code>' + escapeHtml(dr.model) + '</code></td>';
+                        html += '<td style="text-align:right;padding:0.4rem 0.6rem">' + formatNumber(dr.calls) + '</td>';
+                        html += '<td style="text-align:right;padding:0.4rem 0.6rem">' + formatNumber(dr.inputTokens) + '</td>';
+                        html += '<td style="text-align:right;padding:0.4rem 0.6rem">' + formatNumber(dr.outputTokens) + '</td>';
+                        html += '<td style="text-align:right;padding:0.4rem 0.6rem">' + formatCurrency(dr.estimatedCostUsd) + '</td>';
+                        html += '</tr>';
+                    }
+                }
+            }
+            html += '</tbody></table></div></section>';
+        }
+
+        html += '<p class="helper-text" style="margin-top:1rem">Cost estimates are approximate and based on published provider pricing.</p>';
+
+        el.innerHTML = html;
+
+        // Bind period pill clicks
+        var periodButtons = document.querySelectorAll('[data-usage-period]');
+        for(var bi=0;bi<periodButtons.length;bi++){
+            periodButtons[bi].onclick = function(){
+                dashboardState.usage.period = this.getAttribute('data-usage-period');
+                renderUsagePanels();
+            };
+        }
+
+        // Bind refresh
+        var refreshBtn = document.getElementById('usageRefreshButton');
+        if(refreshBtn) refreshBtn.onclick = function(){ loadUsageData(true); };
+
+        // Bind agent toggle clicks
+        var toggleButtons = document.querySelectorAll('[data-usage-toggle-agent]');
+        for(var ti=0;ti<toggleButtons.length;ti++){
+            toggleButtons[ti].onclick = function(){
+                var name = this.getAttribute('data-usage-toggle-agent');
+                if(dashboardState.usage.expandedAgents[name]){
+                    delete dashboardState.usage.expandedAgents[name];
+                } else {
+                    dashboardState.usage.expandedAgents[name] = true;
+                }
+                renderUsagePanels();
+            };
+        }
     }
 
     // Agents page.
@@ -4227,11 +5208,21 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         var temperature = llmConfig.temperature != null ? llmConfig.temperature : '';
         var maxTokens = llmConfig.maxTokens != null ? llmConfig.maxTokens : '';
 
+        var fb = llmConfig.fallback || {};
+        var fbProvider = fb.provider || '';
+        var fbModel = fb.model || '';
+        var fbTemp = fb.temperature != null ? fb.temperature : '';
+        var fbMaxTokens = fb.maxTokens != null ? fb.maxTokens : '';
+
         var providerOptions = "<option value=''" + (provider === '' ? ' selected' : '') + ">System Default</option>";
+        var fbProviderOptions = "<option value=''" + (fbProvider === '' ? ' selected' : '') + ">None</option>";
         for(var i=0;i<llmProviders.length;i++){
             var p = llmProviders[i];
             providerOptions += "<option value='" + escapeHtml(p) + "'" + (p === provider ? ' selected' : '') + ">" + escapeHtml(p) + "</option>";
+            fbProviderOptions += "<option value='" + escapeHtml(p) + "'" + (p === fbProvider ? ' selected' : '') + ">" + escapeHtml(p) + "</option>";
         }
+
+        var hasFallback = !!(fbProvider || fbModel);
 
         return `
 <div class='agent-config-form'>
@@ -4257,6 +5248,31 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
             <input type='number' id='acfLlmMaxTokens' class='control' value='${maxTokens}' placeholder='Leave blank for default' min='0'${disabledAttr} />
         </div>
     </div>
+    <details class='fallback-section' style='margin-top:1rem;border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem'${hasFallback ? ' open' : ''}>
+        <summary style='cursor:pointer;font-weight:600'>\u26A0\uFE0F Fallback Configuration</summary>
+        <p class='field-hint' style='margin-top:.5rem'>Used automatically when the primary provider fails or is unavailable.</p>
+        <div class='field-row'>
+            <div class='field'>
+                <span>Fallback Provider</span>
+                <select id='acfFbProvider' class='control'${disabledAttr}>${fbProviderOptions}</select>
+            </div>
+            <div class='field'>
+                <span>Fallback Model</span>
+                <input type='text' id='acfFbModel' class='control' value='${escapeHtml(fbModel)}' placeholder='e.g. gpt-4o-mini'${disabledAttr} />
+            </div>
+        </div>
+        <div class='field-row'>
+            <div class='field'>
+                <span>Fallback Temperature (0.0 \u2013 2.0)</span>
+                <input type='range' id='acfFbTemp' class='control' min='0' max='2' step='0.1' value='${fbTemp !== '' ? fbTemp : 0.7}' style='padding:.5rem 1rem'${disabledAttr} />
+                <span id='acfFbTempVal' style='text-align:center;font-weight:600'>${fbTemp !== '' ? fbTemp : '0.7'}</span>
+            </div>
+            <div class='field'>
+                <span>Fallback Max Tokens</span>
+                <input type='number' id='acfFbMaxTokens' class='control' value='${fbMaxTokens}' placeholder='Leave blank for default' min='0'${disabledAttr} />
+            </div>
+        </div>
+    </details>
 </div>`;
     }
 
@@ -4407,6 +5423,19 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         if(llmTemp !== '' && llmTemp != null) body.llmConfig.temperature = parseFloat(llmTemp);
         if(llmMaxTokens !== '' && llmMaxTokens != null) body.llmConfig.maxTokens = parseInt(llmMaxTokens, 10) || null;
 
+        // Fallback LLM Config
+        var fbProvider = (document.getElementById('acfFbProvider') || {}).value || '';
+        var fbModel = (document.getElementById('acfFbModel') || {}).value || '';
+        var fbTemp = (document.getElementById('acfFbTemp') || {}).value;
+        var fbMaxTokens = (document.getElementById('acfFbMaxTokens') || {}).value;
+        if(fbProvider || fbModel){
+            body.llmConfig.fallback = {};
+            if(fbProvider) body.llmConfig.fallback.provider = fbProvider;
+            if(fbModel) body.llmConfig.fallback.model = fbModel;
+            if(fbTemp !== '' && fbTemp != null) body.llmConfig.fallback.temperature = parseFloat(fbTemp);
+            if(fbMaxTokens !== '' && fbMaxTokens != null) body.llmConfig.fallback.maxTokens = parseInt(fbMaxTokens, 10) || null;
+        }
+
         // Permissions
         body.permissions = {
             internet: !!(document.getElementById('acfPerm_internet') || {}).checked,
@@ -4464,6 +5493,11 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         var tempVal = document.getElementById('acfLlmTempVal');
         if(tempSlider && tempVal){
             tempSlider.oninput = function(){ tempVal.textContent = tempSlider.value; };
+        }
+        var fbTempSlider = document.getElementById('acfFbTemp');
+        var fbTempVal = document.getElementById('acfFbTempVal');
+        if(fbTempSlider && fbTempVal){
+            fbTempSlider.oninput = function(){ fbTempVal.textContent = fbTempSlider.value; };
         }
         var actionSelect = document.getElementById('acfBudgetAction');
         var pauseField = document.getElementById('acfPauseMinsField');
@@ -5102,11 +6136,531 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         }
     });
 
+    // Timers page.
+    var timerCronPresets = [
+        {label:'Select a preset…',value:''},
+        {label:'Every minute',value:'* * * * *'},
+        {label:'Every 5 minutes',value:'*/5 * * * *'},
+        {label:'Every hour',value:'0 * * * *'},
+        {label:'Every day at 9am',value:'0 9 * * *'},
+        {label:'Every Monday at 9am',value:'0 9 * * 1'},
+        {label:'Every month 1st at midnight',value:'0 0 1 * *'}
+    ];
+
+    function renderTimersPage(){
+        queuePageInit(initTimersPage);
+        return `
+<!-- Page: Timers -->
+<section class="page-shell">
+    <header class="page-header">
+        <div>
+            <h1>Timers</h1>
+            <p>Manage scheduled tasks and automated prompts that run on a recurring or one-time basis.</p>
+        </div>
+        <span class="pill">Scheduler</span>
+    </header>
+    <div id="timersStatus"></div>
+    <div class="timers-toolbar">
+        <button type="button" class="primary-button" data-timers-action="add">+ Add Timer</button>
+        <button type="button" class="secondary-button" data-timers-action="reload">Refresh</button>
+    </div>
+    <div id="timersList">${renderLoadingPanel('Loading scheduled tasks…')}</div>
+    <div id="timerModalHost"></div>
+</section>`;
+    }
+
+    function initTimersPage(){
+        renderTimersList();
+        loadTimers(false);
+        var host = document.getElementById('pageContent');
+        if(host && !host._timersClickBound){
+            host._timersClickBound = true;
+            host.addEventListener('click', handleTimersClick);
+            host.addEventListener('change', handleTimersChange);
+        }
+    }
+
+    function loadTimers(force){
+        var state = dashboardState.timers;
+        if(state.loading) return Promise.resolve();
+        if(!force && state.tasks && state.tasks.length > 0){
+            renderTimersList();
+            return Promise.resolve();
+        }
+        state.loading = true;
+        renderTimersList();
+        return apiRequest('/api/scheduled-tasks').then(function(items){
+            state.tasks = items || [];
+        }).catch(function(err){
+            state.tasks = [];
+            renderTimersStatus(err.message, 'error');
+        }).finally(function(){
+            state.loading = false;
+            renderTimersList();
+        });
+    }
+
+    function renderTimersStatus(message, kind){
+        var host = document.getElementById('timersStatus');
+        if(host){
+            host.innerHTML = renderStatusBanner(message, kind);
+        }
+    }
+
+    function renderTimersList(){
+        var host = document.getElementById('timersList');
+        if(!host) return;
+        var state = dashboardState.timers;
+        if(state.loading && state.tasks.length === 0){
+            host.innerHTML = renderLoadingPanel('Loading scheduled tasks…');
+            return;
+        }
+        if(!state.tasks || state.tasks.length === 0){
+            host.innerHTML = renderSettingsEmptyState(
+                'No timers configured',
+                'Create a scheduled task to automate prompts on a recurring or one-time schedule.',
+                'Add Timer',
+                'data-timers-action="add"'
+            );
+            return;
+        }
+        var rows = '';
+        for(var i = 0; i < state.tasks.length; i++){
+            var t = state.tasks[i];
+            var statusBadge = t.enabled
+                ? '<span class="timer-badge is-enabled">Enabled</span>'
+                : '<span class="timer-badge is-disabled">Disabled</span>';
+            var lastRunBadge = '';
+            if(t.lastRunStatus === 'Failed'){
+                lastRunBadge = ' <span class="timer-badge is-failed">Failed</span>';
+            } else if(t.lastRunStatus === 'Running'){
+                lastRunBadge = ' <span class="timer-badge is-running">Running</span>';
+            } else if(t.lastRunStatus === 'Success'){
+                lastRunBadge = ' <span class="timer-badge is-success">OK</span>';
+            }
+            var schedule = t.isRecurring
+                ? escapeHtml(describeCron(t.cronExpression)) + ' <code style="font-size:.75rem;color:var(--text-secondary)">' + escapeHtml(t.cronExpression || '') + '</code>'
+                : (t.scheduledTime ? 'Once at ' + escapeHtml(formatTimerDate(t.scheduledTime)) : 'One-time');
+            rows += '<tr>';
+            rows += '<td><div class="timer-name">' + escapeHtml(t.name) + '</div>';
+            if(t.description){
+                rows += '<div class="timer-description">' + escapeHtml(t.description) + '</div>';
+            }
+            rows += '</td>';
+            rows += '<td>' + schedule + '</td>';
+            rows += '<td>' + escapeHtml(t.agentName || 'Default') + '</td>';
+            rows += '<td>' + statusBadge + '</td>';
+            rows += '<td>' + (t.lastRunAt ? escapeHtml(formatTimerDate(t.lastRunAt)) : '—') + lastRunBadge + '</td>';
+            rows += '<td>' + (t.nextRunAt ? escapeHtml(formatTimerDate(t.nextRunAt)) : '—') + '</td>';
+            rows += '<td>' + (t.runCount != null ? t.runCount : 0) + '</td>';
+            rows += '<td><div class="timer-actions">';
+            rows += '<button type="button" class="is-run" data-timer-run="' + escapeHtml(t.id) + '" title="Run now">&#9654;</button>';
+            rows += '<button type="button" data-timer-edit="' + escapeHtml(t.id) + '" title="Edit">&#9998;</button>';
+            rows += '<button type="button" class="is-danger" data-timer-delete="' + escapeHtml(t.id) + '" title="Delete">&#128465;</button>';
+            rows += '<div class="toggle-switch" style="margin-left:.3rem">';
+            rows += '<input type="checkbox"' + (t.enabled ? ' checked' : '') + ' data-timer-toggle="' + escapeHtml(t.id) + '">';
+            rows += '<span class="toggle-slider"></span>';
+            rows += '</div>';
+            rows += '</div></td>';
+            rows += '</tr>';
+        }
+        host.innerHTML = '<div class="timers-table-wrap"><table class="timers-table">'
+            + '<thead><tr><th>Name</th><th>Schedule</th><th>Agent</th><th>Status</th><th>Last Run</th><th>Next Run</th><th>Runs</th><th>Actions</th></tr></thead>'
+            + '<tbody>' + rows + '</tbody>'
+            + '</table></div>';
+    }
+
+    function describeCron(expr){
+        if(!expr) return '';
+        var presets = {
+            '* * * * *':'Every minute',
+            '*/5 * * * *':'Every 5 minutes',
+            '*/15 * * * *':'Every 15 minutes',
+            '*/30 * * * *':'Every 30 minutes',
+            '0 * * * *':'Every hour',
+            '0 */2 * * *':'Every 2 hours',
+            '0 */6 * * *':'Every 6 hours',
+            '0 */12 * * *':'Every 12 hours',
+            '0 0 * * *':'Every day at midnight',
+            '0 9 * * *':'Every day at 9am',
+            '0 9 * * 1':'Every Monday at 9am',
+            '0 9 * * 1-5':'Weekdays at 9am',
+            '0 0 1 * *':'Monthly on the 1st',
+            '0 0 * * 0':'Every Sunday at midnight'
+        };
+        return presets[expr] || expr;
+    }
+
+    function formatTimerDate(isoStr){
+        if(!isoStr) return '';
+        try{
+            var d = new Date(isoStr);
+            return d.toLocaleString();
+        } catch(e){
+            return isoStr;
+        }
+    }
+
+    function handleTimersClick(event){
+        var addBtn = event.target.closest('[data-timers-action="add"]');
+        if(addBtn){
+            openTimerModal(null);
+            return;
+        }
+        var reloadBtn = event.target.closest('[data-timers-action="reload"]');
+        if(reloadBtn){
+            loadTimers(true);
+            return;
+        }
+        var editBtn = event.target.closest('[data-timer-edit]');
+        if(editBtn){
+            var editId = editBtn.getAttribute('data-timer-edit');
+            var task = findTimerById(editId);
+            if(task) openTimerModal(task);
+            return;
+        }
+        var deleteBtn = event.target.closest('[data-timer-delete]');
+        if(deleteBtn){
+            var delId = deleteBtn.getAttribute('data-timer-delete');
+            var delTask = findTimerById(delId);
+            var taskName = delTask ? delTask.name : delId;
+            if(window.confirm('Delete timer "' + taskName + '"? This cannot be undone.')){
+                deleteTimer(delId);
+            }
+            return;
+        }
+        var runBtn = event.target.closest('[data-timer-run]');
+        if(runBtn){
+            runTimerNow(runBtn.getAttribute('data-timer-run'));
+            return;
+        }
+        var modalSave = event.target.closest('[data-timer-modal="save"]');
+        if(modalSave){
+            saveTimerFromModal();
+            return;
+        }
+        var modalCancel = event.target.closest('[data-timer-modal="cancel"]');
+        if(modalCancel){
+            closeTimerModal();
+            return;
+        }
+        var presetSelect = event.target.closest('[data-timer-cron-preset]');
+        if(presetSelect && presetSelect.value){
+            var cronInput = document.getElementById('timerCronExpression');
+            if(cronInput) cronInput.value = presetSelect.value;
+            return;
+        }
+        var overlay = event.target.closest('.timer-modal-overlay');
+        if(overlay && event.target === overlay){
+            closeTimerModal();
+            return;
+        }
+    }
+
+    function handleTimersChange(event){
+        var toggle = event.target.closest('[data-timer-toggle]');
+        if(toggle){
+            var tid = toggle.getAttribute('data-timer-toggle');
+            if(toggle.checked){
+                enableTimer(tid);
+            } else {
+                disableTimer(tid);
+            }
+            return;
+        }
+        var schedType = event.target.closest('input[name="timerScheduleType"]');
+        if(schedType){
+            var cronSection = document.getElementById('timerCronSection');
+            var onceSection = document.getElementById('timerOnceSection');
+            if(cronSection) cronSection.style.display = schedType.value === 'recurring' ? '' : 'none';
+            if(onceSection) onceSection.style.display = schedType.value === 'onetime' ? '' : 'none';
+            return;
+        }
+        var presetSel = event.target.closest('[data-timer-cron-preset]');
+        if(presetSel && presetSel.value){
+            var ci = document.getElementById('timerCronExpression');
+            if(ci) ci.value = presetSel.value;
+        }
+    }
+
+    function findTimerById(id){
+        var tasks = dashboardState.timers.tasks;
+        for(var i = 0; i < tasks.length; i++){
+            if(tasks[i].id === id) return tasks[i];
+        }
+        return null;
+    }
+
+    function openTimerModal(task){
+        dashboardState.timers.editingTask = task;
+        dashboardState.timers.showModal = true;
+        renderTimerModal();
+    }
+
+    function closeTimerModal(){
+        dashboardState.timers.editingTask = null;
+        dashboardState.timers.showModal = false;
+        var host = document.getElementById('timerModalHost');
+        if(host) host.innerHTML = '';
+    }
+
+    function renderTimerModal(){
+        var host = document.getElementById('timerModalHost');
+        if(!host) return;
+        var state = dashboardState.timers;
+        if(!state.showModal){
+            host.innerHTML = '';
+            return;
+        }
+        var t = state.editingTask;
+        var isEdit = t && t.id;
+        var title = isEdit ? 'Edit Timer' : 'Add Timer';
+        var name = t ? (t.name || '') : '';
+        var description = t ? (t.description || '') : '';
+        var prompt = t ? (t.prompt || '') : '';
+        var isRecurring = t ? (t.isRecurring !== false) : true;
+        var cronExpression = t ? (t.cronExpression || '') : '';
+        var scheduledTime = t && t.scheduledTime ? t.scheduledTime.substring(0, 16) : '';
+        var agentName = t ? (t.agentName || '') : '';
+        var tags = t ? (t.tags || '') : '';
+        var priority = t ? (t.priority != null ? t.priority : 0) : 0;
+        var timeoutSeconds = t ? (t.timeoutSeconds != null ? t.timeoutSeconds : '') : '';
+        var maxRetries = t ? (t.maxRetries != null ? t.maxRetries : 0) : 0;
+        var enabled = t ? (t.enabled !== false) : true;
+
+        var presetOptions = '';
+        for(var p = 0; p < timerCronPresets.length; p++){
+            presetOptions += '<option value="' + escapeHtml(timerCronPresets[p].value) + '">' + escapeHtml(timerCronPresets[p].label) + '</option>';
+        }
+
+        var html = '<div class="timer-modal-overlay">';
+        html += '<div class="timer-modal">';
+        html += '<h2>' + escapeHtml(title) + '</h2>';
+
+        html += '<div class="timer-form-group">';
+        html += '<label for="timerName">Name *</label>';
+        html += '<input type="text" id="timerName" value="' + escapeHtml(name) + '" placeholder="e.g. Daily Summary" required>';
+        html += '</div>';
+
+        html += '<div class="timer-form-group">';
+        html += '<label for="timerDescription">Description</label>';
+        html += '<textarea id="timerDescription" placeholder="Optional description">' + escapeHtml(description) + '</textarea>';
+        html += '</div>';
+
+        html += '<div class="timer-form-group">';
+        html += '<label for="timerPrompt">Prompt *</label>';
+        html += '<textarea id="timerPrompt" rows="3" placeholder="The prompt to send to the agent" required>' + escapeHtml(prompt) + '</textarea>';
+        html += '</div>';
+
+        html += '<div class="timer-form-group">';
+        html += '<label>Schedule Type</label>';
+        html += '<div class="timer-radio-group">';
+        html += '<label><input type="radio" name="timerScheduleType" value="recurring"' + (isRecurring ? ' checked' : '') + '> Recurring</label>';
+        html += '<label><input type="radio" name="timerScheduleType" value="onetime"' + (!isRecurring ? ' checked' : '') + '> One-time</label>';
+        html += '</div>';
+        html += '</div>';
+
+        html += '<div id="timerCronSection" style="' + (isRecurring ? '' : 'display:none') + '">';
+        html += '<div class="timer-form-group">';
+        html += '<label for="timerCronExpression">Cron Expression *</label>';
+        html += '<input type="text" id="timerCronExpression" value="' + escapeHtml(cronExpression) + '" placeholder="* * * * *">';
+        html += '<div class="timer-cron-presets">';
+        html += '<select data-timer-cron-preset>' + presetOptions + '</select>';
+        html += '</div>';
+        html += '</div>';
+        html += '</div>';
+
+        html += '<div id="timerOnceSection" style="' + (!isRecurring ? '' : 'display:none') + '">';
+        html += '<div class="timer-form-group">';
+        html += '<label for="timerScheduledTime">Date/Time *</label>';
+        html += '<input type="datetime-local" id="timerScheduledTime" value="' + escapeHtml(scheduledTime) + '">';
+        html += '</div>';
+        html += '</div>';
+
+        html += '<div class="timer-form-group">';
+        html += '<label for="timerAgent">Agent</label>';
+        html += '<select id="timerAgent"><option value="">Default Agent</option></select>';
+        html += '</div>';
+
+        html += '<div class="timer-form-group">';
+        html += '<label for="timerTags">Tags (comma-separated)</label>';
+        html += '<input type="text" id="timerTags" value="' + escapeHtml(tags) + '" placeholder="e.g. daily,report">';
+        html += '</div>';
+
+        html += '<div class="timer-form-row">';
+        html += '<div class="timer-form-group">';
+        html += '<label for="timerPriority">Priority</label>';
+        html += '<input type="number" id="timerPriority" value="' + priority + '" min="0">';
+        html += '</div>';
+        html += '<div class="timer-form-group">';
+        html += '<label for="timerTimeout">Timeout (seconds)</label>';
+        html += '<input type="number" id="timerTimeout" value="' + escapeHtml(String(timeoutSeconds)) + '" min="0" placeholder="Optional">';
+        html += '</div>';
+        html += '<div class="timer-form-group">';
+        html += '<label for="timerMaxRetries">Max Retries</label>';
+        html += '<input type="number" id="timerMaxRetries" value="' + maxRetries + '" min="0">';
+        html += '</div>';
+        html += '</div>';
+
+        html += '<div class="toggle-row" style="margin-top:.5rem">';
+        html += '<label><span>Enabled</span></label>';
+        html += '<div class="toggle-switch">';
+        html += '<input type="checkbox" id="timerEnabled"' + (enabled ? ' checked' : '') + '>';
+        html += '<span class="toggle-slider"></span>';
+        html += '</div>';
+        html += '</div>';
+
+        html += '<div class="timer-modal-actions">';
+        html += '<button type="button" class="secondary-button" data-timer-modal="cancel">Cancel</button>';
+        html += '<button type="button" class="primary-button" data-timer-modal="save">' + (isEdit ? 'Save Changes' : 'Create Timer') + '</button>';
+        html += '</div>';
+
+        html += '</div></div>';
+        host.innerHTML = html;
+
+        loadAgentOptions();
+        var agentSelect = document.getElementById('timerAgent');
+        if(agentSelect && agentName){
+            window.setTimeout(function(){
+                agentSelect.value = agentName;
+            }, 200);
+        }
+    }
+
+    function loadAgentOptions(){
+        apiRequest('/api/agents').then(function(agents){
+            var sel = document.getElementById('timerAgent');
+            if(!sel) return;
+            var current = sel.value;
+            var html = '<option value="">Default Agent</option>';
+            if(agents && agents.length){
+                for(var i = 0; i < agents.length; i++){
+                    var a = agents[i];
+                    var aName = a.name || a.agentName || '';
+                    html += '<option value="' + escapeHtml(aName) + '">' + escapeHtml(aName) + '</option>';
+                }
+            }
+            sel.innerHTML = html;
+            if(current) sel.value = current;
+        }).catch(function(){});
+    }
+
+    function collectTimerFormData(){
+        var nameEl = document.getElementById('timerName');
+        var descEl = document.getElementById('timerDescription');
+        var promptEl = document.getElementById('timerPrompt');
+        var cronEl = document.getElementById('timerCronExpression');
+        var timeEl = document.getElementById('timerScheduledTime');
+        var agentEl = document.getElementById('timerAgent');
+        var tagsEl = document.getElementById('timerTags');
+        var priorityEl = document.getElementById('timerPriority');
+        var timeoutEl = document.getElementById('timerTimeout');
+        var retriesEl = document.getElementById('timerMaxRetries');
+        var enabledEl = document.getElementById('timerEnabled');
+
+        var recurringRadio = document.querySelector('input[name="timerScheduleType"]:checked');
+        var isRecurring = !recurringRadio || recurringRadio.value === 'recurring';
+
+        var taskName = nameEl ? nameEl.value.trim() : '';
+        var taskPrompt = promptEl ? promptEl.value.trim() : '';
+        if(!taskName){
+            window.alert('Name is required.');
+            return null;
+        }
+        if(!taskPrompt){
+            window.alert('Prompt is required.');
+            return null;
+        }
+
+        var cronVal = cronEl ? cronEl.value.trim() : '';
+        var timeVal = timeEl ? timeEl.value : '';
+        if(isRecurring && !cronVal){
+            window.alert('Cron expression is required for recurring timers.');
+            return null;
+        }
+        if(!isRecurring && !timeVal){
+            window.alert('Date/Time is required for one-time timers.');
+            return null;
+        }
+
+        var timeoutVal = timeoutEl ? timeoutEl.value.trim() : '';
+
+        return {
+            name: taskName,
+            description: descEl ? descEl.value.trim() : '',
+            prompt: taskPrompt,
+            isRecurring: isRecurring,
+            cronExpression: isRecurring ? cronVal : null,
+            scheduledTime: !isRecurring && timeVal ? new Date(timeVal).toISOString() : null,
+            agentName: agentEl && agentEl.value ? agentEl.value : null,
+            tags: tagsEl ? tagsEl.value.trim() : '',
+            priority: priorityEl ? parseInt(priorityEl.value, 10) || 0 : 0,
+            timeoutSeconds: timeoutVal ? parseInt(timeoutVal, 10) : null,
+            maxRetries: retriesEl ? parseInt(retriesEl.value, 10) || 0 : 0,
+            enabled: enabledEl ? enabledEl.checked : true
+        };
+    }
+
+    function saveTimerFromModal(){
+        var data = collectTimerFormData();
+        if(!data) return;
+        var existing = dashboardState.timers.editingTask;
+        var isEdit = existing && existing.id;
+        var url = isEdit ? '/api/scheduled-tasks/' + encodeURIComponent(existing.id) : '/api/scheduled-tasks';
+        var method = isEdit ? 'PUT' : 'POST';
+
+        apiRequest(url, {
+            method: method,
+            body: JSON.stringify(data)
+        }).then(function(){
+            closeTimerModal();
+            renderTimersStatus(isEdit ? 'Timer updated.' : 'Timer created.', 'success');
+            loadTimers(true);
+        }).catch(function(err){
+            window.alert('Error: ' + err.message);
+        });
+    }
+
+    function deleteTimer(id){
+        apiRequest('/api/scheduled-tasks/' + encodeURIComponent(id), {method:'DELETE'}).then(function(){
+            renderTimersStatus('Timer deleted.', 'success');
+            loadTimers(true);
+        }).catch(function(err){
+            renderTimersStatus('Delete failed: ' + err.message, 'error');
+        });
+    }
+
+    function enableTimer(id){
+        apiRequest('/api/scheduled-tasks/' + encodeURIComponent(id) + '/enable', {method:'POST'}).then(function(){
+            loadTimers(true);
+        }).catch(function(err){
+            renderTimersStatus('Enable failed: ' + err.message, 'error');
+        });
+    }
+
+    function disableTimer(id){
+        apiRequest('/api/scheduled-tasks/' + encodeURIComponent(id) + '/disable', {method:'POST'}).then(function(){
+            loadTimers(true);
+        }).catch(function(err){
+            renderTimersStatus('Disable failed: ' + err.message, 'error');
+        });
+    }
+
+    function runTimerNow(id){
+        apiRequest('/api/scheduled-tasks/' + encodeURIComponent(id) + '/run', {method:'POST'}).then(function(){
+            renderTimersStatus('Timer triggered.', 'success');
+            loadTimers(true);
+        }).catch(function(err){
+            renderTimersStatus('Run failed: ' + err.message, 'error');
+        });
+    }
+
     // User settings page.
     var userSettingsTabs = [
         { id:'profile', href:'#/user-settings/profile', icon:'👤', label:'Profile' },
         { id:'preferences', href:'#/user-settings/preferences', icon:'⚙️', label:'Assistant Preferences' },
-        { id:'tokens', href:'#/user-settings/tokens', icon:'🔑', label:'Tokens' }
+        { id:'tokens', href:'#/user-settings/tokens', icon:'🔑', label:'Tokens' },
+        { id:'system', href:'#/user-settings/system', icon:'🔧', label:'System' }
     ];
 
     function renderUserSettingsPage(){
@@ -5121,6 +6675,9 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         } else if(activeTab === 'tokens'){
             subContent = `
         <section class='card settings-card' id='tokenManagementSection'>${renderLoadingPanel('Loading tokens…')}</section>`;
+        } else if(activeTab === 'system'){
+            subContent = `
+        <section class='card settings-card' id='systemSection'></section>`;
         } else {
             subContent = `
         <section class='card settings-card' id='profileSection'>${renderLoadingPanel('Loading profile…')}</section>`;
@@ -5175,6 +6732,10 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
 
         return apiRequest('/api/preferences').then(function(payload){
             state.groups = normalizePreferencesPayload(payload);
+            var nameEntry = findPreferenceEntry(state.groups, 'assistant.name');
+            var name = nameEntry ? nameEntry.value : 'VEPA';
+            state.assistantName = name;
+            applyAssistantName(name);
         }).catch(function(error){
             state.error = error.message;
         }).finally(function(){
@@ -5658,10 +7219,12 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         var emailEntry = findPreferenceEntry(state.groups, 'user.email');
         var timezoneEntry = findPreferenceEntry(state.groups, 'user.timezone');
         var langEntry = findPreferenceEntry(state.groups, 'user.preferredLanguage');
+        var assistantNameEntry = findPreferenceEntry(state.groups, 'assistant.name');
 
         var detectedTz = detectBrowserTimezone();
         var currentTz = timezoneEntry ? timezoneEntry.value : detectedTz;
         var currentLang = langEntry ? langEntry.value : (navigator.language || 'en-US');
+        var currentAssistantName = assistantNameEntry ? assistantNameEntry.value : '';
 
         return `
 <form id='profileForm'>
@@ -5689,6 +7252,11 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
     <div class='field'>
         <span>Preferred Language</span>
         ${renderLanguageSelect(currentLang, state.isMutating)}
+    </div>
+    <div class='field'>
+        <span>Assistant Name</span>
+        <input id='profileAssistantNameInput' class='control' type='text' value='${escapeHtml(currentAssistantName)}' placeholder='VEPA' maxlength='40' ${state.isMutating ? 'disabled' : ''}>
+        <span class='helper-text'>Customize the display name for your assistant. Leave blank to use the default (VEPA).</span>
     </div>
     <p class='helper-text'>Leave a field blank to remove that stored value. Timezone auto-detects from your browser if not set.</p>
 </form>`;
@@ -5892,6 +7460,26 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
 
         return html;
     }
+
+    function renderSystemSection(){
+        var state = dashboardState.restart;
+        var statusHtml = '';
+        if(state.isRestarting && !state.polling){
+            statusHtml = '<div class="restart-status restart-status-restarting"><span class="loading-indicator" aria-hidden="true"><span></span><span></span><span></span></span> <span>' + escapeHtml(state.message || 'Restarting…') + '</span></div>';
+        } else if(state.polling){
+            statusHtml = '<div class="restart-status restart-status-polling"><span class="loading-indicator" aria-hidden="true"><span></span><span></span><span></span></span> <span>' + escapeHtml(state.message || 'Waiting for service…') + '</span></div>';
+        } else if(state.message){
+            statusHtml = '<div class="restart-status">' + escapeHtml(state.message) + '</div>';
+        }
+
+        return '<div class="section-heading"><div><h2>System</h2><p>Service management and diagnostics.</p></div></div>' +
+            '<div class="restart-section">' +
+            '<h3>Restart Service</h3>' +
+            '<p class="helper-text">Restart the OpenVEPA service to apply configuration changes or recover from issues. Docker will automatically restart the container.</p>' +
+            '<button type="button" class="secondary-button" id="restartServiceButton"' + (state.isRestarting ? ' disabled' : '') + '>' + (state.isRestarting ? 'Restarting…' : '🔄 Restart Service') + '</button>' +
+            statusHtml +
+            '</div>';
+    }
 
     function renderUserSettingsSections(){
         var prefState = dashboardState.preferences;
@@ -5962,6 +7550,15 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
                 reloadButton.onclick = function(){ loadPreferences(true); };
             }
         }
+
+        var systemSection = document.getElementById('systemSection');
+        if(systemSection){
+            systemSection.innerHTML = renderSystemSection();
+            var restartButton = document.getElementById('restartServiceButton');
+            if(restartButton){
+                restartButton.onclick = function(){ restartService(); };
+            }
+        }
     }
 
     function saveProfileSettings(){
@@ -5970,6 +7567,7 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         var emailInput = document.getElementById('profileEmailInput');
         var timezoneInput = document.getElementById('profileTimezoneInput');
         var languageInput = document.getElementById('profileLanguageInput');
+        var assistantNameInput = document.getElementById('profileAssistantNameInput');
         if(!nameInput || !emailInput){
             return;
         }
@@ -5979,10 +7577,12 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         var emailValue = emailInput.value.trim();
         var timezoneValue = timezoneInput ? timezoneInput.value : '';
         var languageValue = languageInput ? languageInput.value : '';
+        var assistantNameValue = assistantNameInput ? assistantNameInput.value.trim() : '';
         var existingName = findPreferenceEntry(state.groups, 'user.name');
         var existingEmail = findPreferenceEntry(state.groups, 'user.email');
         var existingTimezone = findPreferenceEntry(state.groups, 'user.timezone');
         var existingLanguage = findPreferenceEntry(state.groups, 'user.preferredLanguage');
+        var existingAssistantName = findPreferenceEntry(state.groups, 'assistant.name');
 
         if(nameValue){
             operations.push(upsertPreference('user.name', nameValue, 'personal'));
@@ -6008,6 +7608,12 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
             operations.push(deletePreference('user.preferredLanguage'));
         }
 
+        if(assistantNameValue){
+            operations.push(upsertPreference('assistant.name', assistantNameValue, 'assistant'));
+        } else if(existingAssistantName){
+            operations.push(deletePreference('assistant.name'));
+        }
+
         if(operations.length === 0){
             state.error = '';
             state.message = 'Profile is already up to date.';
@@ -6016,7 +7622,11 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         }
 
         runPreferenceMutation(function(){
-            return Promise.all(operations);
+            return Promise.all(operations).then(function(){
+                var newName = assistantNameValue || 'VEPA';
+                dashboardState.preferences.assistantName = newName;
+                applyAssistantName(newName);
+            });
         }, 'Profile saved.');
     }
 
@@ -6135,8 +7745,103 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         }
     }
 
+    function loadAssistantName(){
+        apiRequest('/api/preferences').then(function(payload){
+            var groups = normalizePreferencesPayload(payload);
+            var entry = findPreferenceEntry(groups, 'assistant.name');
+            var name = entry ? entry.value : 'VEPA';
+            dashboardState.preferences.assistantName = name;
+            applyAssistantName(name);
+        }).catch(function(){
+            applyAssistantName('VEPA');
+        });
+    }
+
+    function applyAssistantName(name){
+        var displayName = name || 'VEPA';
+        var topbar = document.getElementById('topbarTitle');
+        var sidebar = document.getElementById('sidebarBrandTitle');
+        if(topbar){ topbar.textContent = displayName; }
+        if(sidebar){ sidebar.textContent = displayName; }
+        document.title = displayName + ' WebUI';
+    }
+
+    function restartService(){
+        if(!window.confirm('Are you sure? The service will restart and you will be disconnected briefly.')){
+            return;
+        }
+
+        var state = dashboardState.restart;
+        state.isRestarting = true;
+        state.polling = false;
+        state.message = 'Sending restart request…';
+        renderUserSettingsSections();
+
+        apiRequest('/api/system/restart', { method:'POST' }).then(function(result){
+            state.message = (result && result.message) || 'Service is restarting…';
+            state.isRestarting = true;
+            renderUserSettingsSections();
+            window.setTimeout(function(){ pollHealthAfterRestart(); }, 4000);
+        }).catch(function(err){
+            state.isRestarting = false;
+            state.message = '';
+            dashboardState.preferences.error = 'Restart failed: ' + (err.message || 'Unknown error');
+            renderUserSettingsSections();
+        });
+    }
+
+    function pollHealthAfterRestart(){
+        var state = dashboardState.restart;
+        state.polling = true;
+        state.message = 'Waiting for service to come back online…';
+        renderUserSettingsSections();
+
+        var attempts = 0;
+        var maxAttempts = 30;
+        var pollInterval = 2000;
+
+        function poll(){
+            attempts++;
+            fetch('/health').then(function(response){
+                if(response.ok){
+                    state.polling = false;
+                    state.isRestarting = false;
+                    state.message = '';
+                    window.location.reload();
+                } else if(attempts < maxAttempts){
+                    window.setTimeout(poll, pollInterval);
+                } else {
+                    state.polling = false;
+                    state.isRestarting = false;
+                    state.message = 'Service did not come back online within 60 seconds. Try refreshing manually.';
+                    renderUserSettingsSections();
+                }
+            }).catch(function(){
+                if(attempts < maxAttempts){
+                    window.setTimeout(poll, pollInterval);
+                } else {
+                    state.polling = false;
+                    state.isRestarting = false;
+                    state.message = 'Service did not come back online within 60 seconds. Try refreshing manually.';
+                    renderUserSettingsSections();
+                }
+            });
+        }
+
+        poll();
+    }
+
     sidebarToggle.addEventListener('click', toggleSidebar);
     sidebarOverlay.addEventListener('click', closeMobileSidebar);
+
+    document.getElementById('themePicker').addEventListener('click', function(event){
+        var btn = event.target.closest('.theme-btn');
+        if(btn){
+            var pref = btn.getAttribute('data-theme-pref');
+            if(pref) applyTheme(pref);
+        }
+    });
+
     navList.addEventListener('click', function(event){
         var target = event.target;
         if(target && target.closest && target.closest('.nav-link') && isMobile()){
@@ -6744,6 +8449,7 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
 
     renderNavigation();
     syncSidebarState();
+    loadAssistantName();
 
     if(!routeMap[window.location.hash] && window.location.hash.indexOf('#/user-settings') !== 0){
         window.location.hash = '#/home';

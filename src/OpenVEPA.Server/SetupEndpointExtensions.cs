@@ -37,7 +37,15 @@ internal static class SetupEndpointExtensions
 
             if (!ModelListProxy.ProviderSupportsListing(provider))
             {
-                return Results.BadRequest(new { error = "Provider does not support dynamic model listing." });
+                return Results.Ok(new
+                {
+                    success = false,
+                    models = Array.Empty<string>(),
+                    provider,
+                    endpoint = string.Empty,
+                    error = "Provider does not support dynamic model listing.",
+                    diagnostics = $"The provider '{provider}' does not expose a model list API.",
+                });
             }
 
             var apiKey = context.Request.Query["apiKey"].ToString();
@@ -50,25 +58,18 @@ internal static class SetupEndpointExtensions
 
             endpoint = endpoint.TrimEnd('/');
 
-            try
-            {
-                var models = await ModelListProxy.FetchModelsFromProviderAsync(
-                    provider, apiKey, endpoint, context.RequestAborted).ConfigureAwait(false);
+            var result = await ModelListProxy.FetchModelsWithStatusAsync(
+                provider, apiKey, endpoint, context.RequestAborted).ConfigureAwait(false);
 
-                return Results.Ok(new { models });
-            }
-            catch (OperationCanceledException)
+            return Results.Ok(new
             {
-                return Results.StatusCode(StatusCodes.Status502BadGateway);
-            }
-#pragma warning disable CA1031 // Catch general exception to return structured error
-            catch (Exception ex)
-#pragma warning restore CA1031
-            {
-                return Results.Json(
-                    new { error = $"Failed to fetch models: {ex.Message}" },
-                    statusCode: StatusCodes.Status502BadGateway);
-            }
+                success = result.Success,
+                models = result.Models,
+                provider = result.Provider,
+                endpoint = result.Endpoint,
+                error = result.Error,
+                diagnostics = result.Diagnostics,
+            });
         });
 
         // Setup submission.
@@ -122,7 +123,7 @@ internal static class SetupEndpointExtensions
         return app;
     }
 
-    /// <summary>Writes the setup configuration as appsettings.json to the home directory.</summary>
+    /// <summary>Writes the setup configuration as openvepa.conf to the home directory.</summary>
     /// <param name="submission">The submitted configuration values.</param>
     /// <param name="homePath">The resolved home directory path.</param>
     /// <param name="ct">A cancellation token.</param>
@@ -149,11 +150,11 @@ internal static class SetupEndpointExtensions
         }
 
         var json = BuildSettingsJson(submission, homePath);
-        var path = Path.Combine(homePath, "appsettings.json");
+        var path = Path.Combine(homePath, "openvepa.conf");
         await File.WriteAllTextAsync(path, json, ct).ConfigureAwait(false);
     }
 
-    /// <summary>Builds the appsettings.json content as an indented JSON string.</summary>
+    /// <summary>Builds the openvepa.conf content as an indented JSON string.</summary>
     /// <param name="s">The submitted configuration.</param>
     /// <param name="homePath">The resolved home directory.</param>
     /// <returns>The formatted JSON string.</returns>
@@ -214,60 +215,59 @@ internal static class SetupEndpointExtensions
             "openai", "groq", "together", "perplexity", "azure",
         };
 
-    /// <summary>Builds the Providers configuration node.</summary>
+    /// <summary>Builds the Providers configuration node using the instance-based format.</summary>
     private static System.Text.Json.Nodes.JsonObject BuildProvidersNode(
         string provider,
         string modelId,
         string apiKey,
         SetupSubmission s)
     {
+        var endpoint = ResolveSetupEndpoint(provider, s);
+        var displayName = string.IsNullOrEmpty(provider)
+            ? provider
+            : string.Concat(provider[..1].ToUpperInvariant(), provider.AsSpan(1));
+
+        var instance = new System.Text.Json.Nodes.JsonObject
+        {
+            ["name"] = provider,
+            ["displayName"] = displayName,
+            ["type"] = provider,
+            ["endpoint"] = endpoint,
+            ["modelId"] = modelId,
+        };
+
+        if (!string.IsNullOrEmpty(apiKey))
+        {
+            instance["apiKey"] = apiKey;
+        }
+
         var providers = new System.Text.Json.Nodes.JsonObject
         {
             ["DefaultProvider"] = provider,
+            ["Instances"] = new System.Text.Json.Nodes.JsonArray(instance),
         };
+
+        return providers;
+    }
+
+    private static string ResolveSetupEndpoint(string provider, SetupSubmission s)
+    {
+        if (!string.IsNullOrWhiteSpace(s.Endpoint))
+        {
+            return s.Endpoint;
+        }
 
         if (string.Equals(provider, "ollama", StringComparison.OrdinalIgnoreCase))
         {
-            providers["Ollama"] = new System.Text.Json.Nodes.JsonObject
-            {
-                ["Endpoint"] = s.Endpoint ?? s.OllamaEndpoint ?? "http://localhost:11434",
-                ["ModelId"] = modelId,
-            };
-
-            if (!string.IsNullOrEmpty(apiKey))
-            {
-                providers["OpenAi"] = new System.Text.Json.Nodes.JsonObject
-                {
-                    ["ApiKey"] = apiKey,
-                    ["ModelId"] = modelId,
-                    ["Endpoint"] = s.Endpoint ?? s.OpenAiEndpoint ?? "https://api.openai.com/v1",
-                };
-            }
+            return s.OllamaEndpoint ?? "http://localhost:11434";
         }
-        else if (OpenAiCompatibleProviders.Contains(provider))
+
+        if (OpenAiCompatibleProviders.Contains(provider))
         {
-            providers["OpenAi"] = new System.Text.Json.Nodes.JsonObject
-            {
-                ["ApiKey"] = apiKey,
-                ["ModelId"] = modelId,
-                ["Endpoint"] = s.Endpoint ?? s.OpenAiEndpoint ?? "https://api.openai.com/v1",
-            };
-        }
-        else
-        {
-            var sectionName = string.IsNullOrEmpty(provider)
-                ? provider
-                : string.Concat(provider[..1].ToUpperInvariant(), provider.AsSpan(1));
-
-            providers[sectionName] = new System.Text.Json.Nodes.JsonObject
-            {
-                ["ApiKey"] = apiKey,
-                ["Endpoint"] = s.Endpoint ?? string.Empty,
-                ["ModelId"] = modelId,
-            };
+            return s.OpenAiEndpoint ?? "https://api.openai.com/v1";
         }
 
-        return providers;
+        return string.Empty;
     }
 
     /// <summary>Builds the Channels configuration node.</summary>

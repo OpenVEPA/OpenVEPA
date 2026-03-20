@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -237,6 +237,8 @@ public sealed class SystemApiIntegrationTests
         configuration!.DefaultProvider.Should().Be("ollama");
         configuration.Providers.Should().ContainSingle();
         configuration.Providers[0].Name.Should().Be("ollama");
+        configuration.Providers[0].DisplayName.Should().Be("Ollama");
+        configuration.Providers[0].Type.Should().Be("ollama");
         configuration.Providers[0].ModelId.Should().Be("llama3.2");
         configuration.Providers[0].Endpoint.Should().Be("http://localhost:11434");
     }
@@ -257,6 +259,8 @@ public sealed class SystemApiIntegrationTests
                     new
                     {
                         name = "openai",
+                        displayName = "OpenAI",
+                        type = "openai",
                         modelId = "gpt-5-mini",
                         endpoint = "https://api.example.test/v1",
                     },
@@ -412,16 +416,23 @@ internal sealed class SystemApiTestHost : IAsyncDisposable
     {
         var rootPath = Path.Combine(Path.GetTempPath(), $"openvepa-system-api-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(rootPath);
+        // Write user config (appsettings.json) in the new instance-based format.
+        var userConfigPath = Path.Combine(rootPath, "appsettings.json");
         await File.WriteAllTextAsync(
-            Path.Combine(rootPath, "appsettings.json"),
+            userConfigPath,
             """
             {
               "Providers": {
                 "DefaultProvider": "ollama",
-                "Ollama": {
-                  "ModelId": "llama3.2",
-                  "Endpoint": "http://localhost:11434"
-                }
+                "Instances": [
+                  {
+                    "name": "ollama",
+                    "displayName": "Ollama",
+                    "type": "ollama",
+                    "endpoint": "http://localhost:11434",
+                    "modelId": "llama3.2"
+                  }
+                ]
               }
             }
             """);

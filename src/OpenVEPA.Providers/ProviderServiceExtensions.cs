@@ -77,8 +77,40 @@ public static class ProviderServiceExtensions
             var options = sp.GetRequiredService<IOptions<ProviderOptions>>().Value;
             var defaultKey = options.DefaultProvider?.ToLowerInvariant() ?? "ollama";
 
+            // Try instance-based config first (new multi-instance format).
+            var instance = options.Instances?.Find(
+                i => string.Equals(i.Name, defaultKey, StringComparison.OrdinalIgnoreCase));
+
+            if (instance is not null)
+            {
+                return CreateFromInstance(instance, sp);
+            }
+
+            // Fall back to keyed service (legacy section-based format).
             return sp.GetRequiredKeyedService<IChatClient>(defaultKey);
         });
+    }
+
+    private static IChatClient CreateFromInstance(ProviderInstanceOptions instance, IServiceProvider sp)
+    {
+        var type = instance.Type?.ToLowerInvariant() ?? "ollama";
+        var auditLogger = ResolveAuditLogger(sp);
+
+        if (string.Equals(type, "ollama", StringComparison.OrdinalIgnoreCase))
+        {
+            return OllamaProvider.Create(new OllamaOptions
+            {
+                Endpoint = instance.Endpoint ?? "http://localhost:11434",
+                Model = instance.ModelId,
+            }, auditLogger);
+        }
+
+        return OpenAiProvider.Create(new OpenAiOptions
+        {
+            ApiKey = instance.ApiKey,
+            Model = instance.ModelId,
+            Endpoint = instance.Endpoint,
+        }, auditLogger);
     }
 
     private static Func<LlmAuditLogEntry, Task>? ResolveAuditLogger(IServiceProvider sp)

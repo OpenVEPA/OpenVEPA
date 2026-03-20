@@ -66,26 +66,32 @@ internal static class SystemApiExtensions
 
         system.MapGet("/status", async (
             SetupCompletionService setupService,
-            IConfiguration configuration,
             ISessionStore sessionStore,
             CancellationToken ct) =>
         {
             var sessions = await sessionStore.ListSessionsAsync(ct).ConfigureAwait(false);
             var activeSessionsCount = sessions.Count(static session => session.Status == SessionStatus.Active);
-            var defaultConfig = GetDefaultProviderConfiguration(configuration);
+            var llmConfig = await ReadUserLlmConfigAsync(setupService.ConfigPath, ct).ConfigureAwait(false);
+            var defaultInstance = llmConfig.Providers.FirstOrDefault(
+                p => string.Equals(p.Name, llmConfig.DefaultProvider, StringComparison.OrdinalIgnoreCase));
 
             return Results.Ok(new SystemStatusResponse(
                 Version: GetApplicationVersion(),
                 Uptime: GetUptime(),
-                Provider: defaultConfig.Provider,
-                Model: defaultConfig.ModelId,
+                Provider: defaultInstance?.Type ?? llmConfig.DefaultProvider,
+                Model: defaultInstance?.ModelId ?? "unknown",
                 SetupComplete: setupService.IsSetupComplete,
                 DatabasePath: ResolveDatabasePath(setupService.ConfigPath),
                 ActiveSessionsCount: activeSessionsCount));
         }).RequireAuthorization();
 
-        system.MapGet("/llm-config", (IConfiguration configuration) =>
-            Results.Ok(GetMultiProviderLlmConfiguration(configuration))).RequireAuthorization();
+        system.MapGet("/llm-config", async (
+            SetupCompletionService setupService,
+            CancellationToken ct) =>
+        {
+            var config = await ReadUserLlmConfigAsync(setupService.ConfigPath, ct).ConfigureAwait(false);
+            return Results.Ok(config);
+        }).RequireAuthorization();
 
         system.MapPut("/llm-config", async (
             UpdateLlmConfigRequest? request,
@@ -109,7 +115,7 @@ internal static class SystemApiExtensions
                 return Results.BadRequest(new { error = "At least one provider configuration is required." });
             }
 
-            var validated = new List<(string Name, string ModelId, string Endpoint)>(request.Providers.Count);
+            var validated = new List<ValidatedProviderInstance>(request.Providers.Count);
             foreach (var entry in request.Providers)
             {
                 var name = NormalizeProvider(entry.Name);
@@ -135,7 +141,13 @@ internal static class SystemApiExtensions
                     return Results.BadRequest(new { error = $"Endpoint for provider '{name}' must be a valid absolute URL." });
                 }
 
-                validated.Add((name, modelId, endpoint));
+                var type = NormalizeProvider(entry.Type) ?? name;
+                var displayName = string.IsNullOrWhiteSpace(entry.DisplayName)
+                    ? GetProviderSectionName(type)
+                    : entry.DisplayName.Trim();
+
+                var apiKey = string.IsNullOrWhiteSpace(entry.ApiKey) ? null : entry.ApiKey.Trim();
+                validated.Add(new ValidatedProviderInstance(name, displayName, type, modelId, endpoint, apiKey));
             }
 
             if (!validated.Exists(p => string.Equals(p.Name, defaultProvider, StringComparison.OrdinalIgnoreCase)))
@@ -180,7 +192,7 @@ internal static class SystemApiExtensions
                 configurationRoot.Reload();
             }
 
-            var updatedConfiguration = GetMultiProviderLlmConfiguration(configuration);
+            var updatedConfiguration = await ReadUserLlmConfigAsync(setupService.ConfigPath, ct).ConfigureAwait(false);
             return Results.Ok(new UpdateLlmConfigResponse(
                 Updated: true,
                 RequiresRestart: true,
@@ -235,62 +247,144 @@ internal static class SystemApiExtensions
         return app;
     }
 
-    private static LlmConfigurationResponse GetDefaultProviderConfiguration(IConfiguration configuration)
+    private static async Task<LlmMultiProviderResponse> ReadUserLlmConfigAsync(
+        string configPath,
+        CancellationToken ct)
     {
-        ArgumentNullException.ThrowIfNull(configuration);
-
-        var provider = NormalizeProvider(configuration["Providers:DefaultProvider"]) ?? "unknown";
-        var sectionName = GetProviderSectionName(provider);
-        var modelId = configuration[$"Providers:{sectionName}:ModelId"]
-            ?? configuration[$"Providers:{sectionName}:Model"]
-            ?? configuration["Providers:DefaultModel"]
-            ?? "unknown";
-        var endpoint = configuration[$"Providers:{sectionName}:Endpoint"];
-        if (string.IsNullOrWhiteSpace(endpoint))
+        if (!File.Exists(configPath))
         {
-            endpoint = ModelListProxy.GetDefaultEndpoint(provider);
+            return new LlmMultiProviderResponse("unknown", []);
         }
 
-        return new LlmConfigurationResponse(provider, modelId, endpoint);
+        string json;
+        try
+        {
+            json = await File.ReadAllTextAsync(configPath, ct).ConfigureAwait(false);
+        }
+        catch (IOException)
+        {
+            return new LlmMultiProviderResponse("unknown", []);
+        }
+
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return new LlmMultiProviderResponse("unknown", []);
+        }
+
+        JsonObject? root;
+        try
+        {
+            root = JsonNode.Parse(json) as JsonObject;
+        }
+        catch (JsonException)
+        {
+            return new LlmMultiProviderResponse("unknown", []);
+        }
+
+        if (root is null)
+        {
+            return new LlmMultiProviderResponse("unknown", []);
+        }
+
+        if (root["Providers"] is not JsonObject providersNode)
+        {
+            return new LlmMultiProviderResponse("unknown", []);
+        }
+
+        var defaultProvider = NormalizeProvider(providersNode["DefaultProvider"]?.GetValue<string>()) ?? "unknown";
+
+        // New instance-based format.
+        if (providersNode["Instances"] is JsonArray instancesArray)
+        {
+            return ReadInstanceFormat(defaultProvider, instancesArray);
+        }
+
+        // Legacy section-based format.
+        return ReadLegacySectionFormat(defaultProvider, providersNode);
     }
 
-    private static LlmMultiProviderResponse GetMultiProviderLlmConfiguration(IConfiguration configuration)
+    private static LlmMultiProviderResponse ReadInstanceFormat(
+        string defaultProvider,
+        JsonArray instancesArray)
     {
-        ArgumentNullException.ThrowIfNull(configuration);
-
-        var defaultProvider = NormalizeProvider(configuration["Providers:DefaultProvider"]) ?? "unknown";
         var providers = new List<LlmProviderEntry>();
-
-        foreach (var (sectionName, providerName) in KnownProviderMappings)
+        foreach (var node in instancesArray)
         {
-            var section = configuration.GetSection($"Providers:{sectionName}");
-            if (!section.Exists())
+            if (node is not JsonObject instance)
             {
                 continue;
             }
 
-            var modelId = section["ModelId"] ?? section["Model"];
+            var name = instance["name"]?.GetValue<string>();
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                continue;
+            }
+
+            var type = instance["type"]?.GetValue<string>() ?? name;
+            var displayName = instance["displayName"]?.GetValue<string>() ?? name;
+            var modelId = instance["modelId"]?.GetValue<string>();
             if (string.IsNullOrWhiteSpace(modelId))
             {
                 continue;
             }
 
-            var endpoint = section["Endpoint"];
+            var endpoint = instance["endpoint"]?.GetValue<string>();
             if (string.IsNullOrWhiteSpace(endpoint))
             {
-                endpoint = ModelListProxy.GetDefaultEndpoint(providerName);
+                endpoint = ModelListProxy.GetDefaultEndpoint(type);
             }
 
-            providers.Add(new LlmProviderEntry(providerName, modelId, endpoint));
+            providers.Add(new LlmProviderEntry(name, displayName, type, modelId, endpoint));
         }
 
         return new LlmMultiProviderResponse(defaultProvider, providers);
     }
 
+    private static LlmMultiProviderResponse ReadLegacySectionFormat(
+        string defaultProvider,
+        JsonObject providersNode)
+    {
+        var providers = new List<LlmProviderEntry>();
+
+        foreach (var (sectionName, providerName) in KnownProviderMappings)
+        {
+            if (providersNode[sectionName] is not JsonObject section)
+            {
+                continue;
+            }
+
+            var modelId = section["ModelId"]?.GetValue<string>() ?? section["Model"]?.GetValue<string>();
+            if (string.IsNullOrWhiteSpace(modelId))
+            {
+                continue;
+            }
+
+            var endpoint = section["Endpoint"]?.GetValue<string>();
+            if (string.IsNullOrWhiteSpace(endpoint))
+            {
+                endpoint = ModelListProxy.GetDefaultEndpoint(providerName);
+            }
+
+            providers.Add(new LlmProviderEntry(providerName, sectionName, providerName, modelId, endpoint));
+        }
+
+        return new LlmMultiProviderResponse(defaultProvider, providers);
+    }
+
+    /// <summary>Validated provider instance for writing configuration.</summary>
+    private readonly record struct ValidatedProviderInstance(
+        string Name,
+        string DisplayName,
+        string Type,
+        string ModelId,
+        string Endpoint,
+        string? ApiKey);
+
     private static async Task WriteMultiProviderConfigurationAsync(
         string configPath,
         string defaultProvider,
-        List<(string Name, string ModelId, string Endpoint)> providers,
+        List<ValidatedProviderInstance> providers,
         CancellationToken ct)
     {
         var directory = Path.GetDirectoryName(configPath);
@@ -303,13 +397,34 @@ internal static class SystemApiExtensions
         JsonObject providersSection = EnsureChildObject(root, "Providers");
         providersSection["DefaultProvider"] = defaultProvider;
 
-        foreach (var (name, modelId, endpoint) in providers)
+        // Remove legacy section-based keys.
+        foreach (var (sectionName, _) in KnownProviderMappings)
         {
-            var sectionName = GetProviderSectionName(name);
-            JsonObject providerSection = EnsureChildObject(providersSection, sectionName);
-            providerSection["ModelId"] = modelId;
-            providerSection["Endpoint"] = endpoint;
+            providersSection.Remove(sectionName);
         }
+
+        // Write new instance-based format.
+        var instancesArray = new JsonArray();
+        foreach (var p in providers)
+        {
+            var instance = new JsonObject
+            {
+                ["name"] = p.Name,
+                ["displayName"] = p.DisplayName,
+                ["type"] = p.Type,
+                ["endpoint"] = p.Endpoint,
+                ["modelId"] = p.ModelId,
+            };
+
+            if (!string.IsNullOrWhiteSpace(p.ApiKey))
+            {
+                instance["apiKey"] = p.ApiKey;
+            }
+
+            instancesArray.Add(instance);
+        }
+
+        providersSection["Instances"] = instancesArray;
 
         var json = root.ToJsonString(JsonOptions);
         await File.WriteAllTextAsync(configPath, json, ct).ConfigureAwait(false);
@@ -389,11 +504,8 @@ internal static class SystemApiExtensions
         string.IsNullOrWhiteSpace(endpoint) ? null : endpoint.Trim().TrimEnd('/');
 }
 
-/// <summary>Represents the default provider's safe LLM configuration (used by status endpoint).</summary>
-internal sealed record LlmConfigurationResponse(string Provider, string ModelId, string? Endpoint);
-
-/// <summary>Represents a single provider entry in the multi-provider response.</summary>
-internal sealed record LlmProviderEntry(string Name, string ModelId, string? Endpoint);
+/// <summary>Represents a single provider instance in the multi-provider response.</summary>
+internal sealed record LlmProviderEntry(string Name, string DisplayName, string Type, string ModelId, string? Endpoint);
 
 /// <summary>Represents the multi-provider LLM configuration response.</summary>
 internal sealed record LlmMultiProviderResponse(
@@ -403,14 +515,23 @@ internal sealed record LlmMultiProviderResponse(
 /// <summary>Represents a single provider's input in an update request.</summary>
 internal sealed record ProviderConfigInput
 {
-    /// <summary>Gets the provider name.</summary>
+    /// <summary>Gets the instance name.</summary>
     public string? Name { get; init; }
+
+    /// <summary>Gets the user-friendly display name.</summary>
+    public string? DisplayName { get; init; }
+
+    /// <summary>Gets the provider type (e.g., "ollama", "openai", "google").</summary>
+    public string? Type { get; init; }
 
     /// <summary>Gets the model identifier.</summary>
     public string? ModelId { get; init; }
 
     /// <summary>Gets the provider endpoint URL.</summary>
     public string? Endpoint { get; init; }
+
+    /// <summary>Gets the API key (optional).</summary>
+    public string? ApiKey { get; init; }
 }
 
 /// <summary>Represents a request to update LLM runtime configuration.</summary>
