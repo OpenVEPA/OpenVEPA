@@ -16,7 +16,7 @@ internal static class SetupConfigurationWriter
     ];
 
     /// <summary>
-    /// Creates the directory structure and writes appsettings.json.
+    /// Creates the directory structure and writes openvepa.conf.
     /// </summary>
     /// <param name="config">The setup configuration to persist.</param>
     /// <param name="ct">A cancellation token.</param>
@@ -27,7 +27,7 @@ internal static class SetupConfigurationWriter
         CreateDirectories(config.HomePath);
 
         var json = BuildSettingsJson(config);
-        var path = Path.Combine(config.HomePath, "appsettings.json");
+        var path = Path.Combine(config.HomePath, "openvepa.conf");
 
         await File.WriteAllTextAsync(path, json, ct).ConfigureAwait(false);
     }
@@ -44,7 +44,7 @@ internal static class SetupConfigurationWriter
         }
     }
 
-    /// <summary>Builds the appsettings.json content as an indented JSON string.</summary>
+    /// <summary>Builds the openvepa.conf content as an indented JSON string.</summary>
     /// <param name="config">The configuration to serialize.</param>
     /// <returns>The formatted JSON string.</returns>
     private static string BuildSettingsJson(SetupConfiguration config)

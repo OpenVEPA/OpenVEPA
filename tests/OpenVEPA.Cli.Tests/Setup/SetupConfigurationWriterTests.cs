@@ -83,7 +83,7 @@ public sealed class SetupConfigurationWriterTests : IDisposable
 
         await SetupConfigurationWriter.WriteAsync(config, CancellationToken.None);
 
-        File.Exists(Path.Combine(_tempDir, "appsettings.json")).Should().BeTrue();
+        File.Exists(Path.Combine(_tempDir, "openvepa.conf")).Should().BeTrue();
     }
 
     [Fact]
@@ -93,7 +93,7 @@ public sealed class SetupConfigurationWriterTests : IDisposable
 
         await SetupConfigurationWriter.WriteAsync(config, CancellationToken.None);
 
-        var json = await File.ReadAllTextAsync(Path.Combine(_tempDir, "appsettings.json"));
+        var json = await File.ReadAllTextAsync(Path.Combine(_tempDir, "openvepa.conf"));
         var act = () => JsonDocument.Parse(json);
 
         act.Should().NotThrow("the written file must be valid JSON");
@@ -566,7 +566,7 @@ public sealed class SetupConfigurationWriterTests : IDisposable
 
     private async Task<JsonNode> ReadSettingsAsJsonNode()
     {
-        var json = await File.ReadAllTextAsync(Path.Combine(_tempDir, "appsettings.json"));
+        var json = await File.ReadAllTextAsync(Path.Combine(_tempDir, "openvepa.conf"));
         return JsonNode.Parse(json)!;
     }
 

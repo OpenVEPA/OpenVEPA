@@ -37,6 +37,7 @@ services:
       - OPENVEPA_MODEL=${OPENVEPA_MODEL:-}
       - OPENVEPA_API_KEY=${OPENVEPA_API_KEY:-}
       - OPENVEPA_OLLAMA_ENDPOINT=${OPENVEPA_OLLAMA_ENDPOINT:-http://ollama:11434}
+      - OPENVEPA_LOG_LEVEL=${OPENVEPA_LOG_LEVEL:-Debug}
     # NET_ADMIN required for UFW firewall rules inside the container
     cap_add:
       - NET_ADMIN

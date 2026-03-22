@@ -1286,6 +1286,7 @@ body.mobile-sidebar-open .sidebar-overlay{opacity:1;pointer-events:auto}
     border:1px solid var(--border);
     cursor:pointer;
     transition:background .2s;
+    pointer-events:none;
 }
 .toggle-slider::before{
     content:'';
@@ -2680,7 +2681,11 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
             homeState.messagesLoadedFor = homeState.selectedSessionId;
             updateSessionActivity(homeState.selectedSessionId, assistantMessage.timestamp);
         } catch (error) {
-            homeState.messages = sortMessages(homeState.messages.concat([createClientSystemMessage(error.message || 'Unable to send the message right now.')]));
+            var errorText = error.message || 'Unable to send the message right now.';
+            if(errorText.indexOf('500') !== -1){
+                errorText += '\n\nThis may indicate a configuration issue. Please check:\n• LLM provider is configured (Settings → LLM Providers)\n• Provider connection test passes\n• Server logs for detailed error information';
+            }
+            homeState.messages = sortMessages(homeState.messages.concat([createClientSystemMessage(errorText)]));
         } finally {
             homeState.isSending = false;
             updateHomePage();
@@ -2873,19 +2878,27 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         var text = '';
         try {
             text = await response.text();
-        } catch (error) {
-            return '';
+        } catch (e) {
+            return 'Server returned status ' + response.status + ' but the response could not be read.';
         }
 
-        if(!text){
-            return '';
+        if(!text || !text.trim()){
+            return 'Server returned status ' + response.status + ' with no details. Check server logs for more information.';
         }
 
         try {
             var payload = JSON.parse(text);
-            return payload.detail || payload.title || payload.message || payload.error || text;
-        } catch (error) {
-            return text;
+            var msg = payload.detail || payload.title || payload.message || payload.error;
+            if(msg){
+                if(payload.type) msg += ' (' + payload.type + ')';
+                return msg;
+            }
+            return text.substring(0, 500);
+        } catch (e) {
+            // Response was not JSON — might be HTML error page
+            var stripped = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+            if(stripped.length > 500) stripped = stripped.substring(0, 500) + '…';
+            return stripped || ('Server returned status ' + response.status);
         }
     }
 
@@ -3249,6 +3262,18 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         'together',
         'perplexity'
     ];
+    var llmProviderMeta = {
+        ollama:     {cloud:false, defaultEndpoint:'http://localhost:11434'},
+        openai:     {cloud:true,  defaultEndpoint:'https://api.openai.com/v1'},
+        google:     {cloud:true,  defaultEndpoint:'https://generativelanguage.googleapis.com/v1beta'},
+        anthropic:  {cloud:true,  defaultEndpoint:'https://api.anthropic.com'},
+        mistral:    {cloud:true,  defaultEndpoint:'https://api.mistral.ai/v1'},
+        groq:       {cloud:true,  defaultEndpoint:'https://api.groq.com/openai/v1'},
+        azure:      {cloud:true,  defaultEndpoint:''},
+        cohere:     {cloud:true,  defaultEndpoint:'https://api.cohere.ai/v1'},
+        together:   {cloud:true,  defaultEndpoint:'https://api.together.xyz/v1'},
+        perplexity: {cloud:true,  defaultEndpoint:'https://api.perplexity.ai'}
+    };
     var dashboardState = {
         llm:{
             config:null,
@@ -3418,8 +3443,15 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
                         message = getTokenRecoveryMessage();
                     } else if(data && typeof data === 'object' && data.error){
                         message = data.error;
+                        if(Array.isArray(data.details) && data.details.length > 0){
+                            message += ' ' + data.details.join('; ');
+                        }
                     } else if(typeof data === 'string' && data){
                         message = data;
+                    }
+
+                    if(data && typeof data === 'object' && data.type){
+                        message += ' (' + data.type + ')';
                     }
 
                     throw new Error(message);
@@ -3793,7 +3825,10 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         html += banner;
 
         if(state.addingProvider){
-            var draft = state.addDraft || {type:llmProviders[0],displayName:'',modelId:'',endpoint:'',apiKey:''};
+            var draft = state.addDraft || {type:llmProviders[0],displayName:'',defaultModel:'',endpoint:'',apiKey:''};
+            var addMeta = llmProviderMeta[draft.type] || {cloud:false,defaultEndpoint:''};
+            var addIsCloud = addMeta.cloud && draft.type !== 'azure';
+            var addShowApiKey = draft.type !== 'ollama';
             html += '<div class="provider-card" style="border-color:var(--accent)">';
             html += '<div class="section-heading"><div><h2>Add new provider</h2></div></div>';
             html += '<div class="field">';
@@ -3804,34 +3839,44 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
             html += '<span>Display Name</span>';
             html += '<input id="llmNewDisplayNameInput" class="control" type="text" value="'+escapeHtml(draft.displayName)+'" placeholder="e.g. Ollama Home"' + (state.isSaving ? ' disabled' : '') + '>';
             html += '</div>';
+            if(addShowApiKey){
+                html += '<div class="field">';
+                html += addMeta.cloud ? '<span>API Key</span>' : '<span>API Key <span style="font-weight:normal;opacity:0.7">(optional)</span></span>';
+                html += '<input id="llmNewApiKeyInput" class="control" type="password" value="'+escapeHtml(draft.apiKey)+'" placeholder="sk-..."' + (state.isSaving ? ' disabled' : '') + '>';
+                html += '</div>';
+            }
+            if(!addIsCloud){
+                html += '<div class="field">';
+                html += '<span>Endpoint URL</span>';
+                html += '<input id="llmNewEndpointInput" class="control" type="url" value="'+escapeHtml(draft.endpoint)+'" placeholder="https://api.example.com/v1"' + (state.isSaving ? ' disabled' : '') + '>';
+                html += '</div>';
+            }
             html += '<div class="field">';
-            html += '<span>Model</span>';
+            html += '<span>Default Model</span>';
             html += '<div style="display:flex;gap:0.5rem;align-items:flex-start">';
             if(state.addFetchedModels && state.addFetchedModels.length > 0){
                 html += '<select id="llmNewModelSelect" class="control" style="flex:1;margin-bottom:0"' + (state.isSaving ? ' disabled' : '') + '>';
                 for(var mi=0;mi<state.addFetchedModels.length;mi++){
                     var m = state.addFetchedModels[mi];
-                    html += '<option value="'+escapeHtml(m)+'"' + (m === draft.modelId ? ' selected' : '') + '>' + escapeHtml(m) + '</option>';
+                    html += '<option value="'+escapeHtml(m)+'"' + (m === draft.defaultModel ? ' selected' : '') + '>' + escapeHtml(m) + '</option>';
                 }
-                html += '<option value="__custom__">\u2014 Custom model \u2014</option>';
+                if(!addIsCloud){
+                    html += '<option value="__custom__">\u2014 Custom model \u2014</option>';
+                }
                 html += '</select>';
             } else {
-                html += '<input id="llmNewModelInput" class="control" style="flex:1;margin-bottom:0" type="text" value="'+escapeHtml(draft.modelId)+'" placeholder="model-id"' + (state.isSaving ? ' disabled' : '') + '>';
+                if(addIsCloud){
+                    html += '<span class="helper-text" style="flex:1;margin-bottom:0;line-height:2.2">Use Fetch Models to load available models</span>';
+                } else {
+                    html += '<input id="llmNewModelInput" class="control" style="flex:1;margin-bottom:0" type="text" value="'+escapeHtml(draft.defaultModel)+'" placeholder="model-id"' + (state.isSaving ? ' disabled' : '') + '>';
+                }
             }
             html += '<button type="button" class="secondary-button" id="llmNewFetchModelsBtn" style="white-space:nowrap"' + (state.isSaving || (state.addFetchStatus && state.addFetchStatus.type === 'loading') ? ' disabled' : '') + '>' + (state.addFetchStatus && state.addFetchStatus.type === 'loading' ? 'Fetching\u2026' : 'Fetch Models') + '</button>';
             html += '</div>';
-            if(state.addFetchedModels && state.addFetchedModels.length > 0){
-                html += '<input id="llmNewModelCustom" class="control hidden" type="text" value="'+escapeHtml(draft.modelId)+'" placeholder="Enter custom model name" style="margin-top:0.5rem">';
+            if(!addIsCloud && state.addFetchedModels && state.addFetchedModels.length > 0){
+                html += '<input id="llmNewModelCustom" class="control hidden" type="text" value="'+escapeHtml(draft.defaultModel)+'" placeholder="Enter custom model name" style="margin-top:0.5rem">';
             }
             html += renderProviderFetchStatus(state.addFetchStatus);
-            html += '</div>';
-            html += '<div class="field">';
-            html += '<span>Endpoint</span>';
-            html += '<input id="llmNewEndpointInput" class="control" type="url" value="'+escapeHtml(draft.endpoint)+'" placeholder="https://api.example.com/v1"' + (state.isSaving ? ' disabled' : '') + '>';
-            html += '</div>';
-            html += '<div class="field">';
-            html += '<span>API Key <span style="font-weight:normal;opacity:0.7">(optional)</span></span>';
-            html += '<input id="llmNewApiKeyInput" class="control" type="password" value="'+escapeHtml(draft.apiKey)+'" placeholder="sk-..."' + (state.isSaving ? ' disabled' : '') + '>';
             html += '</div>';
             html += '<div class="provider-actions">';
             html += '<button type="button" class="secondary-button" id="llmCancelAddButton"' + (state.isSaving ? ' disabled' : '') + '>Cancel</button>';
@@ -3856,39 +3901,57 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
             html += '</div>';
 
             if(isEditing){
-                var draft = state.editDraft || {displayName:p.displayName||'',modelId:p.modelId||'',endpoint:p.endpoint||'',apiKey:''};
+                var draft = state.editDraft || {displayName:p.displayName||'',defaultModel:p.defaultModel||'',endpoint:p.endpoint||'',apiKey:''};
+                var editProvType = p.type || p.name;
+                var editMeta = llmProviderMeta[editProvType] || {cloud:false,defaultEndpoint:''};
+                var editIsCloud = editMeta.cloud && editProvType !== 'azure';
+                var editShowApiKey = editProvType !== 'ollama';
                 html += '<div class="field">';
                 html += '<span>Display Name</span>';
                 html += '<input class="control llm-edit-displayname" type="text" value="'+escapeHtml(draft.displayName)+'" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>';
                 html += '</div>';
+                if(editShowApiKey){
+                    html += '<div class="field">';
+                    html += editMeta.cloud ? '<span>API Key</span>' : '<span>API Key <span style="font-weight:normal;opacity:0.7">(optional)</span></span>';
+                    var keyPlaceholder = p.hasApiKey ? 'Key is configured — leave blank to keep existing' : 'Enter API key';
+                    html += '<input class="control llm-edit-apikey" type="password" value="'+escapeHtml(draft.apiKey)+'" placeholder="'+keyPlaceholder+'" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>';
+                    if(p.hasApiKey && !draft.apiKey){
+                        html += '<span class="helper-text" style="color:var(--success-color,#2e7d32)">✓ API key is already configured. Only enter a new key if you want to change it.</span>';
+                    }
+                    html += '</div>';
+                }
+                if(!editIsCloud){
+                    html += '<div class="field">';
+                    html += '<span>Endpoint URL</span>';
+                    html += '<input class="control llm-edit-endpoint" type="url" value="'+escapeHtml(draft.endpoint)+'" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>';
+                    html += '</div>';
+                }
                 html += '<div class="field">';
-                html += '<span>Model</span>';
+                html += '<span>Default Model</span>';
                 html += '<div style="display:flex;gap:0.5rem;align-items:flex-start">';
                 if(state.editFetchedModels && state.editFetchedModels.length > 0){
                     html += '<select class="control llm-edit-model-select" style="flex:1;margin-bottom:0" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>';
                     for(var emi=0;emi<state.editFetchedModels.length;emi++){
                         var em = state.editFetchedModels[emi];
-                        html += '<option value="'+escapeHtml(em)+'"' + (em === draft.modelId ? ' selected' : '') + '>' + escapeHtml(em) + '</option>';
+                        html += '<option value="'+escapeHtml(em)+'"' + (em === draft.defaultModel ? ' selected' : '') + '>' + escapeHtml(em) + '</option>';
                     }
-                    html += '<option value="__custom__">\u2014 Custom model \u2014</option>';
+                    if(!editIsCloud){
+                        html += '<option value="__custom__">\u2014 Custom model \u2014</option>';
+                    }
                     html += '</select>';
                 } else {
-                    html += '<input class="control llm-edit-model" style="flex:1;margin-bottom:0" type="text" value="'+escapeHtml(draft.modelId)+'" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>';
+                    if(editIsCloud){
+                        html += '<span class="helper-text" style="flex:1;margin-bottom:0;line-height:2.2">' + escapeHtml(draft.defaultModel || 'Use Fetch Models to load available models') + '</span>';
+                    } else {
+                        html += '<input class="control llm-edit-model" style="flex:1;margin-bottom:0" type="text" value="'+escapeHtml(draft.defaultModel)+'" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>';
+                    }
                 }
-                html += '<button type="button" class="secondary-button llm-edit-fetch-btn" style="white-space:nowrap" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving || (state.editFetchStatus && state.editFetchStatus.type === 'loading') ? ' disabled' : '') + '>' + (state.editFetchStatus && state.editFetchStatus.type === 'loading' ? 'Fetching\u2026' : 'Fetch Models') + '</button>';
+                html += '<button type="button" class="secondary-button llm-edit-fetch-btn" style="white-space:nowrap" data-provider="'+escapeHtml(p.name)+'" data-provider-type="'+escapeHtml(p.type||p.name)+'"' + (state.isSaving || (state.editFetchStatus && state.editFetchStatus.type === 'loading') ? ' disabled' : '') + '>' + (state.editFetchStatus && state.editFetchStatus.type === 'loading' ? 'Fetching\u2026' : 'Fetch Models') + '</button>';
                 html += '</div>';
-                if(state.editFetchedModels && state.editFetchedModels.length > 0){
-                    html += '<input class="control llm-edit-model-custom hidden" type="text" value="'+escapeHtml(draft.modelId)+'" data-provider="'+escapeHtml(p.name)+'" placeholder="Enter custom model name" style="margin-top:0.5rem">';
+                if(!editIsCloud && state.editFetchedModels && state.editFetchedModels.length > 0){
+                    html += '<input class="control llm-edit-model-custom hidden" type="text" value="'+escapeHtml(draft.defaultModel)+'" data-provider="'+escapeHtml(p.name)+'" placeholder="Enter custom model name" style="margin-top:0.5rem">';
                 }
                 html += renderProviderFetchStatus(state.editFetchStatus);
-                html += '</div>';
-                html += '<div class="field">';
-                html += '<span>Endpoint</span>';
-                html += '<input class="control llm-edit-endpoint" type="url" value="'+escapeHtml(draft.endpoint)+'" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>';
-                html += '</div>';
-                html += '<div class="field">';
-                html += '<span>API Key <span style="font-weight:normal;opacity:0.7">(optional)</span></span>';
-                html += '<input class="control llm-edit-apikey" type="password" value="'+escapeHtml(draft.apiKey)+'" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>';
                 html += '</div>';
                 html += '<div class="provider-actions">';
                 html += '<button type="button" class="secondary-button llm-cancel-edit"' + (state.isSaving ? ' disabled' : '') + '>Cancel</button>';
@@ -3897,10 +3960,41 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
             } else {
                 html += '<div class="provider-meta">';
                 html += '<div class="provider-meta-row"><span class="provider-meta-label">Instance</span><span class="provider-meta-value" style="opacity:0.7;font-size:0.9em">' + escapeHtml(p.name) + '</span></div>';
-                html += '<div class="provider-meta-row"><span class="provider-meta-label">Model</span><span class="provider-meta-value">' + escapeHtml(p.modelId || 'unknown') + '</span></div>';
+                html += '<div class="provider-meta-row"><span class="provider-meta-label">Default Model</span><span class="provider-meta-value">' + escapeHtml(p.defaultModel || p.modelId || 'unknown') + '</span></div>';
+                if(p.availableModels && p.availableModels.length > 0){
+                    html += '<div class="provider-meta-row"><span class="provider-meta-label">Available Models</span><span class="provider-meta-value"><details style="margin:0"><summary style="cursor:pointer;font-size:0.9em">' + p.availableModels.length + ' model' + (p.availableModels.length !== 1 ? 's' : '') + '</summary><ul style="margin:0.25rem 0 0 1rem;padding:0;list-style:disc">';
+                    for(var ami=0;ami<p.availableModels.length;ami++){
+                        html += '<li style="font-size:0.85em">' + escapeHtml(p.availableModels[ami]) + '</li>';
+                    }
+                    html += '</ul></details></span></div>';
+                }
                 html += '<div class="provider-meta-row"><span class="provider-meta-label">Endpoint</span><span class="provider-meta-value">' + escapeHtml(p.endpoint || 'Not configured') + '</span></div>';
+                html += '<div class="provider-meta-row"><span class="provider-meta-label">API Key</span><span class="provider-meta-value">' + (p.hasApiKey ? '<span style="color:var(--success-color,#2e7d32)">✓ Configured</span>' : '<span style="opacity:0.5">Not set</span>') + '</span></div>';
                 html += '</div>';
+                var pTestKey = 'test_' + p.name;
+                var pTestStatus = state.providerTestStatus && state.providerTestStatus[pTestKey];
+                var pTestLoading = pTestStatus && pTestStatus.type === 'loading';
+                if(pTestStatus && pTestStatus.type !== 'loading'){
+                    if(pTestStatus.success){
+                        html += '<div class="model-status-indicator model-status-success" style="margin:0.5rem 0">✅ <strong>Connected</strong> — ' + escapeHtml(pTestStatus.diagnostics || (pTestStatus.modelCount + ' models available.')) + '</div>';
+                    } else {
+                        html += '<div class="model-status-indicator model-status-error" style="margin:0.5rem 0">❌ <strong>Connection failed</strong> — ' + escapeHtml(pTestStatus.error || 'Unknown error') + '</div>';
+                    }
+                }
+                var chatTestKey = 'chat_' + p.name;
+                var chatTestResult = state.providerTestStatus ? state.providerTestStatus[chatTestKey] : null;
+                if(chatTestResult && chatTestResult.type !== 'loading'){
+                    if(chatTestResult.success){
+                        html += '<div class="model-status-indicator model-status-success" style="margin:0.5rem 0">✅ <strong>Chat works!</strong> ' + escapeHtml(chatTestResult.diagnostics || '') + '</div>';
+                    } else {
+                        html += '<div class="model-status-indicator model-status-error" style="margin:0.5rem 0">❌ <strong>Chat failed:</strong> ' + escapeHtml(chatTestResult.error || '') + '<br><small>' + escapeHtml(chatTestResult.diagnostics || '') + '</small></div>';
+                    }
+                }
                 html += '<div class="provider-actions">';
+                html += '<button type="button" class="secondary-button llm-test-provider" data-provider="'+escapeHtml(p.name)+'" data-provider-type="'+escapeHtml(p.type||p.name)+'"' + (pTestLoading || state.isSaving ? ' disabled' : '') + '>' + (pTestLoading ? 'Testing\u2026' : 'Test') + '</button>';
+                var chatTestStatus = state.providerTestStatus && state.providerTestStatus[chatTestKey];
+                var chatTestLoading = chatTestStatus && chatTestStatus.type === 'loading';
+                html += ' <button type="button" class="secondary-button llm-test-chat" data-provider="'+escapeHtml(p.name)+'"' + (chatTestLoading || state.isSaving ? ' disabled' : '') + '>' + (chatTestLoading ? 'Testing Chat\u2026' : 'Test Chat') + '</button>';
                 if(!isDefault){
                     html += '<button type="button" class="secondary-button llm-set-default" data-provider="'+escapeHtml(p.name)+'"' + (state.isSaving ? ' disabled' : '') + '>Set as default</button>';
                 }
@@ -3917,7 +4011,7 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         if(providers.length === 0){
             html += '<p class="helper-text">No providers configured. Use the Add Provider button to get started.</p>';
         } else {
-            html += '<p class="helper-text">Only non-sensitive configuration values are displayed. API keys remain hidden from the WebUI.</p>';
+            html += '<p class="helper-text">API keys are stored securely and never sent back to the browser.</p>';
         }
 
         return html;
@@ -4059,7 +4153,11 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         if(addProviderButton){
             addProviderButton.onclick = function(){
                 dashboardState.llm.addingProvider = true;
-                dashboardState.llm.addDraft = {type:llmProviders[0],displayName:'',modelId:'',endpoint:'',apiKey:''};
+                var defaultType = llmProviders[0];
+                var meta = llmProviderMeta[defaultType];
+                dashboardState.llm.addDraft = {type:defaultType,displayName:'',defaultModel:'',endpoint:meta ? meta.defaultEndpoint : '',apiKey:''};
+                dashboardState.llm.addFetchedModels = null;
+                dashboardState.llm.addFetchStatus = null;
                 dashboardState.llm.error = '';
                 renderLlmSettingsPanels();
             };
@@ -4082,12 +4180,37 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         var newFetchBtn = document.getElementById('llmNewFetchModelsBtn');
         if(newFetchBtn){
             newFetchBtn.onclick = function(){
+                saveLlmAddDraft();
                 var sel = document.getElementById('llmNewProviderSelect');
                 var epInput = document.getElementById('llmNewEndpointInput');
                 var akInput = document.getElementById('llmNewApiKeyInput');
-                if(sel && epInput){
-                    fetchProviderModels('add', sel.value, epInput.value.trim(), akInput ? akInput.value.trim() : '');
+                if(!sel) return;
+                var meta = llmProviderMeta[sel.value];
+                if(meta && meta.cloud && (!akInput || !akInput.value.trim())){
+                    var state = dashboardState.llm;
+                    state.addFetchStatus = {type:'error', error:'API key is required for ' + sel.value + '.', diagnostics:'Enter your API key above, then try fetching again.'};
+                    renderLlmSettingsPanels();
+                    return;
                 }
+                var endpoint = epInput ? epInput.value.trim() : '';
+                if(!endpoint && meta) endpoint = meta.defaultEndpoint;
+                var apiKey = akInput ? akInput.value.trim() : '';
+                fetchProviderModels('add', sel.value, endpoint, apiKey);
+            };
+        }
+        var providerSelect = document.getElementById('llmNewProviderSelect');
+        if(providerSelect){
+            providerSelect.onchange = function(){
+                var state = dashboardState.llm;
+                if(!state.addDraft) state.addDraft = {};
+                saveLlmAddDraft();
+                state.addDraft.type = this.value;
+                var meta = llmProviderMeta[this.value];
+                if(meta) state.addDraft.endpoint = meta.defaultEndpoint;
+                state.addFetchedModels = null;
+                state.addFetchStatus = null;
+                state.addDraft.defaultModel = '';
+                renderLlmSettingsPanels();
             };
         }
         var newModelSelect = document.getElementById('llmNewModelSelect');
@@ -4098,7 +4221,7 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
                     if(customInput) customInput.classList.remove('hidden');
                 } else {
                     if(customInput) customInput.classList.add('hidden');
-                    if(dashboardState.llm.addDraft) dashboardState.llm.addDraft.modelId = this.value;
+                    if(dashboardState.llm.addDraft) dashboardState.llm.addDraft.defaultModel = this.value;
                 }
             };
         }
@@ -4110,7 +4233,7 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
                 var config = dashboardState.llm.config;
                 var existing = (config && config.providers || []).filter(function(p){ return p.name === providerName; })[0];
                 dashboardState.llm.editingProvider = providerName;
-                dashboardState.llm.editDraft = {displayName:(existing && existing.displayName)||'',modelId:(existing && existing.modelId)||'',endpoint:(existing && existing.endpoint)||'',apiKey:''};
+                dashboardState.llm.editDraft = {displayName:(existing && existing.displayName)||'',defaultModel:(existing && existing.defaultModel)||'',endpoint:(existing && existing.endpoint)||'',apiKey:''};
                 dashboardState.llm.error = '';
                 renderLlmSettingsPanels();
             };
@@ -4136,10 +4259,29 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         for(var efi=0;efi<editFetchButtons.length;efi++){
             editFetchButtons[efi].onclick = function(){
                 var pn = this.getAttribute('data-provider');
+                var config = dashboardState.llm.config;
+                var existing = (config && config.providers || []).filter(function(p){ return p.name === pn; })[0];
+                var providerType = existing ? (existing.type || existing.name) : pn;
+                var meta = llmProviderMeta[providerType];
                 var epInput = document.querySelector('.llm-edit-endpoint[data-provider="'+pn+'"]');
-                if(epInput){
-                    fetchProviderModels('edit', pn, epInput.value.trim());
+                var akInput = document.querySelector('.llm-edit-apikey[data-provider="'+pn+'"]');
+                var dnInput = document.querySelector('.llm-edit-displayname[data-provider="'+pn+'"]');
+                // Persist all edit form values into draft before re-render
+                var ed = dashboardState.llm.editDraft;
+                if(ed){
+                    if(dnInput) ed.displayName = dnInput.value;
+                    if(epInput) ed.endpoint = epInput.value.trim();
+                    if(akInput) ed.apiKey = akInput.value.trim();
                 }
+                if(meta && meta.cloud && (!akInput || !akInput.value.trim())){
+                    dashboardState.llm.editFetchStatus = {type:'error', error:'API key is required for ' + providerType + '.', diagnostics:'Enter your API key above, then try fetching again.'};
+                    renderLlmSettingsPanels();
+                    return;
+                }
+                var endpoint = epInput ? epInput.value.trim() : '';
+                if(!endpoint && meta) endpoint = meta.defaultEndpoint;
+                var apiKey = akInput ? akInput.value.trim() : '';
+                fetchProviderModels('edit', providerType, endpoint, apiKey);
             };
         }
         var editModelSelects = document.querySelectorAll('.llm-edit-model-select');
@@ -4151,7 +4293,7 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
                     if(customInput) customInput.classList.remove('hidden');
                 } else {
                     if(customInput) customInput.classList.add('hidden');
-                    if(dashboardState.llm.editDraft) dashboardState.llm.editDraft.modelId = this.value;
+                    if(dashboardState.llm.editDraft) dashboardState.llm.editDraft.defaultModel = this.value;
                 }
             };
         }
@@ -4173,10 +4315,70 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
             retryButtons[ti].onclick = function(){ loadLlmSettings(true); };
         }
 
+        var providerTestButtons = document.querySelectorAll('.llm-test-provider');
+        for(var pti=0;pti<providerTestButtons.length;pti++){
+            providerTestButtons[pti].onclick = function(){
+                var pName = this.getAttribute('data-provider');
+                var pType = this.getAttribute('data-provider-type');
+                testProviderConnection(pName, pType);
+            };
+        }
+
+        var chatTestButtons = document.querySelectorAll('.llm-test-chat');
+        for(var cti=0;cti<chatTestButtons.length;cti++){
+            chatTestButtons[cti].onclick = function(){
+                testProviderChat(this.getAttribute('data-provider'));
+            };
+        }
+
         var testConnectionButton = document.getElementById('llmTestConnectionButton');
         if(testConnectionButton){
             testConnectionButton.onclick = function(){ testLlmConnection(); };
         }
+    }
+
+    function testProviderChat(providerName){
+        var state = dashboardState.llm;
+        if(!state.providerTestStatus) state.providerTestStatus = {};
+        var testKey = 'chat_' + providerName;
+        state.providerTestStatus[testKey] = {type:'loading'};
+        renderLlmSettingsPanels();
+
+        apiRequest('/api/system/test-chat?provider=' + encodeURIComponent(providerName), {method:'POST'}).then(function(result){
+            if(result.success){
+                state.providerTestStatus[testKey] = {type:'success', success:true, diagnostics:'Chat works! Model: ' + (result.model||'?') + ', Response: ' + (result.responsePreview||'').substring(0,100)};
+            } else {
+                var detail = 'HTTP ' + (result.httpStatus||'?') + ': ' + (result.error||'Unknown error');
+                if(result.hint) detail += ' \u2014 ' + result.hint;
+                state.providerTestStatus[testKey] = {type:'error', success:false, error:detail, diagnostics:'Provider: ' + (result.provider||'?') + ', Model: ' + (result.model||'?') + ', Endpoint: ' + (result.endpoint||'?')};
+            }
+        }).catch(function(error){
+            state.providerTestStatus[testKey] = {type:'error', success:false, error:error.message, diagnostics:'Request failed'};
+        }).finally(function(){
+            renderLlmSettingsPanels();
+        });
+    }
+
+    function testProviderConnection(providerName, providerType){
+        var state = dashboardState.llm;
+        if(!state.providerTestStatus) state.providerTestStatus = {};
+        var testKey = 'test_' + providerName;
+        state.providerTestStatus[testKey] = {type:'loading'};
+        renderLlmSettingsPanels();
+
+        var url = '/api/system/models?provider=' + encodeURIComponent(providerName);
+
+        apiRequest(url).then(function(result){
+            if(result.success){
+                state.providerTestStatus[testKey] = {type:'success',success:true,modelCount:result.models ? result.models.length : 0,diagnostics:result.diagnostics || (result.models.length + ' models available.')};
+            } else {
+                state.providerTestStatus[testKey] = {type:'error',success:false,error:result.error || 'Unknown error',diagnostics:result.diagnostics || ''};
+            }
+        }).catch(function(error){
+            state.providerTestStatus[testKey] = {type:'error',success:false,error:error.message,diagnostics:'Request failed: ' + error.message};
+        }).finally(function(){
+            renderLlmSettingsPanels();
+        });
     }
 
     function testLlmConnection(providerOverride, endpointOverride){
@@ -4233,6 +4435,20 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         return '';
     }
 
+    function saveLlmAddDraft(){
+        var state = dashboardState.llm;
+        if(!state.addDraft) state.addDraft = {};
+        var el;
+        el = document.getElementById('llmNewProviderSelect'); if(el) state.addDraft.type = el.value;
+        el = document.getElementById('llmNewDisplayNameInput'); if(el) state.addDraft.displayName = el.value;
+        el = document.getElementById('llmNewEndpointInput'); if(el) state.addDraft.endpoint = el.value.trim();
+        el = document.getElementById('llmNewApiKeyInput'); if(el) state.addDraft.apiKey = el.value.trim();
+        var modelSelect = document.getElementById('llmNewModelSelect');
+        var modelInput = document.getElementById('llmNewModelInput');
+        if(modelSelect) state.addDraft.defaultModel = modelSelect.value === '__custom__' ? '' : modelSelect.value;
+        else if(modelInput) state.addDraft.defaultModel = modelInput.value.trim();
+    }
+
     function fetchProviderModels(context, provider, endpoint, apiKey){
         var state = dashboardState.llm;
         var statusKey = context === 'add' ? 'addFetchStatus' : 'editFetchStatus';
@@ -4251,11 +4467,11 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
             if(result.success && result.models && result.models.length > 0){
                 state[statusKey] = {type:'success',count:result.models.length};
                 state[modelsKey] = result.models;
-                if(context === 'add' && state.addDraft && !state.addDraft.modelId){
-                    state.addDraft.modelId = result.models[0];
+                if(context === 'add' && state.addDraft && !state.addDraft.defaultModel){
+                    state.addDraft.defaultModel = result.models[0];
                 }
-                if(context === 'edit' && state.editDraft && !state.editDraft.modelId){
-                    state.editDraft.modelId = result.models[0];
+                if(context === 'edit' && state.editDraft && !state.editDraft.defaultModel){
+                    state.editDraft.defaultModel = result.models[0];
                 }
             } else {
                 state[statusKey] = {type:'error',error:result.error || 'No models returned.',diagnostics:result.diagnostics || ''};
@@ -4271,10 +4487,11 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         return {
             defaultProvider:defaultProvider,
             providers:providers.map(function(p){
-                var entry = {name:p.name,modelId:p.modelId,endpoint:p.endpoint};
+                var entry = {name:p.name,defaultModel:p.defaultModel,endpoint:p.endpoint};
                 if(p.displayName) entry.displayName = p.displayName;
                 if(p.type) entry.type = p.type;
                 if(p.apiKey) entry.apiKey = p.apiKey;
+                if(p.availableModels && p.availableModels.length > 0) entry.availableModels = p.availableModels;
                 return entry;
             })
         };
@@ -4314,26 +4531,40 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         var modelInput = document.getElementById('llmNewModelInput');
         var modelCustom = document.getElementById('llmNewModelCustom');
         var endpointInput = document.getElementById('llmNewEndpointInput');
-        if(!nameSelect || !endpointInput){
+        var displayNameInput = document.getElementById('llmNewDisplayNameInput');
+        var apiKeyInput = document.getElementById('llmNewApiKeyInput');
+        if(!nameSelect){
             return;
         }
 
         var providerType = nameSelect.value;
-        var displayNameInput = document.getElementById('llmNewDisplayNameInput');
-        var apiKeyInput = document.getElementById('llmNewApiKeyInput');
-        var modelId = '';
+        var meta = llmProviderMeta[providerType] || {cloud:false,defaultEndpoint:''};
+        var defaultModel = '';
         if(modelSelect){
-            modelId = modelSelect.value === '__custom__'
+            defaultModel = modelSelect.value === '__custom__'
                 ? (modelCustom ? modelCustom.value.trim() : '')
                 : modelSelect.value;
         } else if(modelInput){
-            modelId = modelInput.value.trim();
+            defaultModel = modelInput.value.trim();
         }
-        var endpoint = endpointInput.value.trim();
+        var endpoint = endpointInput ? endpointInput.value.trim() : '';
+        if(!endpoint && meta) endpoint = meta.defaultEndpoint;
         var displayName = displayNameInput ? displayNameInput.value.trim() : '';
         var apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
-        if(!providerType || !modelId || !endpoint){
-            state.error = 'Provider type, model, and endpoint are required.';
+
+        if(!providerType || !defaultModel){
+            var isCloud = meta.cloud && providerType !== 'azure';
+            state.error = isCloud ? 'Please fetch models first, then select a default model.' : 'Provider type and default model are required.';
+            renderLlmSettingsPanels();
+            return;
+        }
+        if(meta.cloud && !apiKey){
+            state.error = 'API key is required for cloud provider ' + providerType + '.';
+            renderLlmSettingsPanels();
+            return;
+        }
+        if(!meta.cloud && !endpoint){
+            state.error = 'Endpoint is required for ' + providerType + '.';
             renderLlmSettingsPanels();
             return;
         }
@@ -4350,45 +4581,62 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         }
 
         var providers = (config.providers || []).slice();
-        providers.push({name:instanceName,displayName:displayName||instanceName,type:providerType,modelId:modelId,endpoint:endpoint,apiKey:apiKey});
+        providers.push({name:instanceName,displayName:displayName||instanceName,type:providerType,defaultModel:defaultModel,endpoint:endpoint,apiKey:apiKey});
         var payload = buildFullPayload(config.defaultProvider, providers);
         submitLlmConfig(payload);
     }
 
     function saveEditedProvider(providerName){
         var state = dashboardState.llm;
+        var config = state.config || {defaultProvider:'unknown',providers:[]};
+        var existing = (config.providers || []).filter(function(p){ return p.name === providerName; })[0];
+        var providerType = existing ? (existing.type || existing.name) : providerName;
+        var meta = llmProviderMeta[providerType] || {cloud:false,defaultEndpoint:''};
+
         var modelSelect = document.querySelector('.llm-edit-model-select[data-provider="'+providerName+'"]');
         var modelInput = document.querySelector('.llm-edit-model[data-provider="'+providerName+'"]');
         var modelCustom = document.querySelector('.llm-edit-model-custom[data-provider="'+providerName+'"]');
         var endpointInput = document.querySelector('.llm-edit-endpoint[data-provider="'+providerName+'"]');
-        if(!endpointInput){
-            return;
-        }
+        var displayNameInput = document.querySelector('.llm-edit-displayname[data-provider="'+providerName+'"]');
+        var apiKeyInput = document.querySelector('.llm-edit-apikey[data-provider="'+providerName+'"]');
 
-        var modelId = '';
+        var defaultModel = '';
         if(modelSelect){
-            modelId = modelSelect.value === '__custom__'
+            defaultModel = modelSelect.value === '__custom__'
                 ? (modelCustom ? modelCustom.value.trim() : '')
                 : modelSelect.value;
         } else if(modelInput){
-            modelId = modelInput.value.trim();
+            defaultModel = modelInput.value.trim();
         }
-        var endpoint = endpointInput.value.trim();
-        if(!modelId || !endpoint){
-            state.error = 'Model and endpoint are required.';
+        // For cloud providers without fetched models, keep existing default model from draft
+        var editIsCloud = meta.cloud && providerType !== 'azure';
+        if(!defaultModel && editIsCloud && dashboardState.llm.editDraft){
+            defaultModel = dashboardState.llm.editDraft.defaultModel || '';
+        }
+        var endpoint = endpointInput ? endpointInput.value.trim() : '';
+        if(!endpoint && meta) endpoint = meta.defaultEndpoint;
+        var displayName = displayNameInput ? displayNameInput.value.trim() : '';
+        var apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
+
+        if(!defaultModel){
+            state.error = 'Default model is required.';
+            renderLlmSettingsPanels();
+            return;
+        }
+        if(meta.cloud && !apiKey && !(existing && existing.hasApiKey)){
+            state.error = 'API key is required for cloud provider ' + providerType + '.';
+            renderLlmSettingsPanels();
+            return;
+        }
+        if(!meta.cloud && !endpoint){
+            state.error = 'Endpoint is required for ' + providerType + '.';
             renderLlmSettingsPanels();
             return;
         }
 
-        var displayNameInput = document.querySelector('.llm-edit-displayname[data-provider="'+providerName+'"]');
-        var apiKeyInput = document.querySelector('.llm-edit-apikey[data-provider="'+providerName+'"]');
-        var displayName = displayNameInput ? displayNameInput.value.trim() : '';
-        var apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
-
-        var config = state.config || {defaultProvider:'unknown',providers:[]};
         var providers = (config.providers || []).map(function(p){
             if(p.name === providerName){
-                return {name:p.name,displayName:displayName||p.displayName||'',type:p.type||p.name,modelId:modelId,endpoint:endpoint,apiKey:apiKey};
+                return {name:p.name,displayName:displayName||p.displayName||'',type:p.type||p.name,defaultModel:defaultModel,endpoint:endpoint,apiKey:apiKey};
             }
             return p;
         });
@@ -4406,6 +4654,26 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
     function removeProvider(providerName){
         var state = dashboardState.llm;
         var config = state.config || {defaultProvider:'unknown',providers:[]};
+
+        // Check if this provider is used by any agent (using cached detail data).
+        var agentsState = dashboardState.agents;
+        if(agentsState && agentsState.items){
+            var usedByAgents = [];
+            for(var i=0;i<agentsState.items.length;i++){
+                var agentItem = agentsState.items[i];
+                if(!agentItem.hasLlmOverride) continue;
+                var detail = agentsState.detailByName[agentItem.name];
+                if(detail && detail.llmConfig && detail.llmConfig.provider === providerName){
+                    usedByAgents.push(agentItem.name);
+                }
+            }
+            if(usedByAgents.length > 0){
+                state.error = "Cannot remove provider \x22" + providerName + "\x22 \u2014 it is used by agent(s): " + usedByAgents.join(", ") + ". Update those agents first.";
+                renderLlmSettingsPanels();
+                return;
+            }
+        }
+
         var providers = (config.providers || []).filter(function(p){ return p.name !== providerName; });
         if(providers.length === 0){
             state.error = 'Cannot remove the last provider.';
@@ -5041,8 +5309,13 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         state.configError = '';
         renderAgentConfigCard();
 
-        apiRequest('/api/agents/' + encodeURIComponent(agentName)).then(function(detail){
+        Promise.all([
+            apiRequest('/api/agents/' + encodeURIComponent(agentName)),
+            apiRequest('/api/system/llm-config')
+        ]).then(function(results){
+            var detail = results[0];
             state.configDetail = detail;
+            state.configuredProviders = results[1].providers || [];
             var titleEl = document.getElementById('agentConfigTitle');
             var descEl = document.getElementById('agentConfigDesc');
             if(titleEl) titleEl.textContent = (detail.name || agentName) + ' Configuration';
@@ -5214,62 +5487,84 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         var fbTemp = fb.temperature != null ? fb.temperature : '';
         var fbMaxTokens = fb.maxTokens != null ? fb.maxTokens : '';
 
-        var providerOptions = "<option value=''" + (provider === '' ? ' selected' : '') + ">System Default</option>";
-        var fbProviderOptions = "<option value=''" + (fbProvider === '' ? ' selected' : '') + ">None</option>";
-        for(var i=0;i<llmProviders.length;i++){
-            var p = llmProviders[i];
-            providerOptions += "<option value='" + escapeHtml(p) + "'" + (p === provider ? ' selected' : '') + ">" + escapeHtml(p) + "</option>";
-            fbProviderOptions += "<option value='" + escapeHtml(p) + "'" + (p === fbProvider ? ' selected' : '') + ">" + escapeHtml(p) + "</option>";
+        var configuredProviders = dashboardState.agents.configuredProviders || [];
+
+        var providerOptions = "<option value='" + "'" + (provider === '' ? ' selected' : '') + ">System Default</option>";
+        for(var i=0;i<configuredProviders.length;i++){
+            var cp = configuredProviders[i];
+            var label = cp.displayName || cp.name;
+            providerOptions += "<option value='" + escapeHtml(cp.name) + "'" + (cp.name === provider ? ' selected' : '') + ">" + escapeHtml(label) + "</option>";
         }
+
+        var fbProviderOptions = "<option value='" + "'" + (fbProvider === '' ? ' selected' : '') + ">None</option>";
+        for(var i=0;i<configuredProviders.length;i++){
+            var cp = configuredProviders[i];
+            var label = cp.displayName || cp.name;
+            fbProviderOptions += "<option value='" + escapeHtml(cp.name) + "'" + (cp.name === fbProvider ? ' selected' : '') + ">" + escapeHtml(label) + "</option>";
+        }
+
+        var modelOptions = "<option value=" + '""' + ">-- Select model --</option>";
+        if(model) modelOptions += "<option value='" + escapeHtml(model) + "' selected>" + escapeHtml(model) + "</option>";
+
+        var fbModelOptions = "<option value=" + '""' + ">-- Select model --</option>";
+        if(fbModel) fbModelOptions += "<option value='" + escapeHtml(fbModel) + "' selected>" + escapeHtml(fbModel) + "</option>";
 
         var hasFallback = !!(fbProvider || fbModel);
 
         return `
-<div class='agent-config-form'>
-    <p class='field-hint'>Leave fields blank to use the system default LLM configuration.</p>
-    <div class='field-row'>
-        <div class='field'>
+<div class="agent-config-form">
+    <p class="field-hint">Leave fields blank to use the system default LLM configuration.</p>
+    <div class="field-row">
+        <div class="field">
             <span>Provider</span>
-            <select id='acfLlmProvider' class='control'${disabledAttr}>${providerOptions}</select>
+            <select id="acfLlmProvider" class="control"${disabledAttr}>${providerOptions}</select>
         </div>
-        <div class='field'>
+        <div class="field">
             <span>Model</span>
-            <input type='text' id='acfLlmModel' class='control' value='${escapeHtml(model)}' placeholder='e.g. gpt-4o, llama3'${disabledAttr} />
+            <div style="display:flex;gap:0.5rem;align-items:flex-start">
+                <select id="acfLlmModel" class="control" style="flex:1;margin-bottom:0"${disabledAttr}>${modelOptions}</select>
+                <button type="button" class="secondary-button" id="acfFetchModelsBtn" style="white-space:nowrap"${disabledAttr}>Fetch Models</button>
+            </div>
+            <div id="acfModelFetchStatus"></div>
         </div>
     </div>
-    <div class='field-row'>
-        <div class='field'>
+    <div class="field-row">
+        <div class="field">
             <span>Temperature (0.0 \u2013 2.0)</span>
-            <input type='range' id='acfLlmTemp' class='control' min='0' max='2' step='0.1' value='${temperature !== '' ? temperature : 0.7}' style='padding:.5rem 1rem'${disabledAttr} />
-            <span id='acfLlmTempVal' style='text-align:center;font-weight:600'>${temperature !== '' ? temperature : '0.7'}</span>
+            <input type="range" id="acfLlmTemp" class="control" min="0" max="2" step="0.1" value="${temperature !== '' ? temperature : 0.7}" style="padding:.5rem 1rem"${disabledAttr} />
+            <span id="acfLlmTempVal" style="text-align:center;font-weight:600">${temperature !== '' ? temperature : '0.7'}</span>
         </div>
-        <div class='field'>
+        <div class="field">
             <span>Max Tokens</span>
-            <input type='number' id='acfLlmMaxTokens' class='control' value='${maxTokens}' placeholder='Leave blank for default' min='0'${disabledAttr} />
+            <input type="number" id="acfLlmMaxTokens" class="control" value="${maxTokens}" placeholder="Leave blank for default" min="0"${disabledAttr} />
         </div>
     </div>
-    <details class='fallback-section' style='margin-top:1rem;border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem'${hasFallback ? ' open' : ''}>
-        <summary style='cursor:pointer;font-weight:600'>\u26A0\uFE0F Fallback Configuration</summary>
-        <p class='field-hint' style='margin-top:.5rem'>Used automatically when the primary provider fails or is unavailable.</p>
-        <div class='field-row'>
-            <div class='field'>
+    <details class="fallback-section" style="margin-top:1rem;border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem"${hasFallback ? ' open' : ''}>
+        <summary style="cursor:pointer;font-weight:600">\u26A0\uFE0F Fallback Configuration</summary>
+        <p class="field-hint" style="margin-top:.5rem">Used automatically when the primary provider fails or is unavailable.</p>
+        <div class="field-row">
+            <div class="field">
                 <span>Fallback Provider</span>
-                <select id='acfFbProvider' class='control'${disabledAttr}>${fbProviderOptions}</select>
+                <select id="acfFbProvider" class="control"${disabledAttr}>${fbProviderOptions}</select>
             </div>
-            <div class='field'>
+            <div class="field">
                 <span>Fallback Model</span>
-                <input type='text' id='acfFbModel' class='control' value='${escapeHtml(fbModel)}' placeholder='e.g. gpt-4o-mini'${disabledAttr} />
+                <div style="display:flex;gap:0.5rem;align-items:flex-start">
+                    <select id="acfFbModel" class="control" style="flex:1;margin-bottom:0"${disabledAttr}>${fbModelOptions}</select>
+                    <button type="button" class="secondary-button" id="acfFbFetchModelsBtn" style="white-space:nowrap"${disabledAttr}>Fetch Models</button>
+                </div>
+                <div id="acfFbModelFetchStatus"></div>
             </div>
         </div>
-        <div class='field-row'>
-            <div class='field'>
+        <div class="field-row">
+            <div class="field">
                 <span>Fallback Temperature (0.0 \u2013 2.0)</span>
-                <input type='range' id='acfFbTemp' class='control' min='0' max='2' step='0.1' value='${fbTemp !== '' ? fbTemp : 0.7}' style='padding:.5rem 1rem'${disabledAttr} />
-                <span id='acfFbTempVal' style='text-align:center;font-weight:600'>${fbTemp !== '' ? fbTemp : '0.7'}</span>
+                <input type="range" id="acfFbTemp" class="control" min="0" max="2" step="0.1" value="${fbTemp !== '' ? fbTemp : 0.7}" style="padding:.5rem 1rem"${disabledAttr} />
+                <span id="acfFbTempVal" style="text-align:center;font-weight:600">${fbTemp !== '' ? fbTemp : '0.7'}</span>
             </div>
-            <div class='field'>
+            <div class="field">
                 <span>Fallback Max Tokens</span>
-                <input type='number' id='acfFbMaxTokens' class='control' value='${fbMaxTokens}' placeholder='Leave blank for default' min='0'${disabledAttr} />
+                <input type="number" id="acfFbMaxTokens" class="control" value="${fbMaxTokens}" placeholder="Leave blank for default" min="0"${disabledAttr} />
             </div>
         </div>
     </details>
@@ -5468,6 +5763,16 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         var priorityVal = parseInt((document.getElementById('acfPriority') || {}).value, 10);
         body.priority = isNaN(priorityVal) ? 0 : priorityVal;
 
+        // Preserve form state so re-render on error keeps user edits
+        if(state.configDetail){
+            state.configDetail.llmConfig = body.llmConfig;
+            state.configDetail.permissions = body.permissions;
+            state.configDetail.tokenBudget = body.tokenBudget;
+            state.configDetail.triggers = body.triggers;
+            state.configDetail.restrictions = body.restrictions;
+            state.configDetail.priority = body.priority;
+        }
+
         state.configSaving = true;
         state.configError = '';
         state.configMessage = '';
@@ -5506,6 +5811,95 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
                 pauseField.style.display = actionSelect.value === 'PauseResume' ? '' : 'none';
             };
         }
+        var toggleSwitches = document.querySelectorAll('.toggle-switch');
+        for(var ti=0;ti<toggleSwitches.length;ti++){
+            toggleSwitches[ti].onclick = function(e){
+                if(e.target.tagName === 'INPUT') return;
+                var cb = this.querySelector("input[type='checkbox']");
+                if(cb && !cb.disabled) cb.checked = !cb.checked;
+            };
+        }
+        var providerSelect = document.getElementById('acfLlmProvider');
+        if(providerSelect){
+            providerSelect.onchange = function(){
+                fetchAgentModels('primary', this.value);
+            };
+        }
+        var fetchBtn = document.getElementById('acfFetchModelsBtn');
+        if(fetchBtn){
+            fetchBtn.onclick = function(){
+                var sel = document.getElementById('acfLlmProvider');
+                if(sel) fetchAgentModels('primary', sel.value);
+            };
+        }
+        var fbProviderSelect = document.getElementById('acfFbProvider');
+        if(fbProviderSelect){
+            fbProviderSelect.onchange = function(){
+                fetchAgentModels('fallback', this.value);
+            };
+        }
+        var fbFetchBtn = document.getElementById('acfFbFetchModelsBtn');
+        if(fbFetchBtn){
+            fbFetchBtn.onclick = function(){
+                var sel = document.getElementById('acfFbProvider');
+                if(sel) fetchAgentModels('fallback', sel.value);
+            };
+        }
+    }
+
+    function fetchAgentModels(context, providerName){
+        var configuredProviders = dashboardState.agents.configuredProviders || [];
+        var provider = null;
+        for(var i=0;i<configuredProviders.length;i++){
+            if(configuredProviders[i].name === providerName){ provider = configuredProviders[i]; break; }
+        }
+
+        var modelSelect = document.getElementById(context === 'primary' ? 'acfLlmModel' : 'acfFbModel');
+        var statusDiv = document.getElementById(context === 'primary' ? 'acfModelFetchStatus' : 'acfFbModelFetchStatus');
+
+        if(!provider || !modelSelect){
+            if(modelSelect){
+                modelSelect.innerHTML = "<option value=" + '""' + ">-- Select provider first --</option>";
+            }
+            if(statusDiv) statusDiv.innerHTML = '';
+            return;
+        }
+
+        // If provider has pinned available models, use those directly
+        if(provider.availableModels && provider.availableModels.length > 0){
+            var currentVal = modelSelect.value;
+            var html = "<option value=" + '""' + ">-- Select model --</option>";
+            for(var i=0;i<provider.availableModels.length;i++){
+                var m = provider.availableModels[i];
+                html += "<option value='" + escapeHtml(m) + "'" + (m === currentVal ? ' selected' : '') + ">" + escapeHtml(m) + "</option>";
+            }
+            modelSelect.innerHTML = html;
+            if(statusDiv) statusDiv.innerHTML = '<span style="color:var(--success)">\u2705 ' + provider.availableModels.length + ' models available</span>';
+            return;
+        }
+
+        // Otherwise fetch from API
+        if(statusDiv) statusDiv.innerHTML = '<span class="loading-indicator" aria-hidden="true"><span></span><span></span><span></span></span> Fetching models...';
+
+        var queryParams = ['provider=' + encodeURIComponent(provider.type || provider.name)];
+        if(provider.endpoint) queryParams.push('endpoint=' + encodeURIComponent(provider.endpoint));
+
+        apiRequest('/api/system/models?' + queryParams.join('&')).then(function(result){
+            if(result.success && result.models && result.models.length > 0){
+                var currentVal = modelSelect.value;
+                var html = "<option value=" + '""' + ">-- Select model --</option>";
+                for(var i=0;i<result.models.length;i++){
+                    var m = result.models[i];
+                    html += "<option value='" + escapeHtml(m) + "'" + (m === currentVal ? ' selected' : '') + ">" + escapeHtml(m) + "</option>";
+                }
+                modelSelect.innerHTML = html;
+                if(statusDiv) statusDiv.innerHTML = '<span style="color:var(--success)">\u2705 Found ' + result.models.length + ' models</span>';
+            } else {
+                if(statusDiv) statusDiv.innerHTML = '<span style="color:var(--error)">\u274C ' + escapeHtml(result.error || 'No models returned') + '</span>';
+            }
+        }).catch(function(error){
+            if(statusDiv) statusDiv.innerHTML = '<span style="color:var(--error)">\u274C ' + escapeHtml(error.message) + '</span>';
+        });
     }
 
     // Orchestrator settings.

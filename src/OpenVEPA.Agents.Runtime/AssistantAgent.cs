@@ -62,6 +62,10 @@ public sealed class AssistantAgent
         var options = CreateChatOptions(tools);
         var skillResults = new List<SkillResult>();
 
+        _logger.LogInformation(
+            "Sending LLM request: agent={Agent}, model={Model}, messages={Count}",
+            agent.Name, agent.LlmConfig?.Model ?? "(default)", messages.Count);
+
         for (int iteration = 0; iteration < MaxToolCallIterations; iteration++)
         {
             _logger.LogDebug(
@@ -81,7 +85,7 @@ public sealed class AssistantAgent
 
             AppendResponseMessages(messages, response);
             await ExecuteToolCallsAsync(
-                functionCalls, messages, skillResults, chatClient, preferences, ct);
+                functionCalls, messages, skillResults, chatClient, preferences, agent.Permissions, ct);
         }
 
         _logger.LogWarning(
@@ -179,7 +183,8 @@ public sealed class AssistantAgent
             _logger,
             _configuration,
             preferences,
-            CancellationToken.None);
+            CancellationToken.None,
+            agent.Permissions);
 
         return relevantSkills
             .Select(manifest => (AITool)new SkillAIFunction(manifest, _skillRuntime, executionContext))
@@ -216,6 +221,7 @@ public sealed class AssistantAgent
         List<SkillResult> skillResults,
         IChatClient chatClient,
         UserPreferences? preferences,
+        AgentPermissions? permissions,
         CancellationToken ct)
     {
         foreach (var call in functionCalls)
@@ -224,7 +230,7 @@ public sealed class AssistantAgent
                 "Executing tool call: {Name} (CallId: {CallId})",
                 call.Name, call.CallId);
 
-            var result = await InvokeSkillAsync(call, chatClient, preferences, ct);
+            var result = await InvokeSkillAsync(call, chatClient, preferences, permissions, ct);
             skillResults.Add(result);
 
             var resultJson = FormatSkillResult(result);
@@ -238,6 +244,7 @@ public sealed class AssistantAgent
         FunctionCallContent call,
         IChatClient chatClient,
         UserPreferences? preferences,
+        AgentPermissions? permissions,
         CancellationToken ct)
     {
         var executionContext = new SkillExecutionContext(
@@ -245,7 +252,8 @@ public sealed class AssistantAgent
             _logger,
             _configuration,
             preferences,
-            ct);
+            ct,
+            permissions);
 
         var parameters = call.Arguments?.ToDictionary(
             kvp => kvp.Key,

@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using OpenVEPA.Storage.Entities;
 
 namespace OpenVEPA.Storage;
@@ -28,13 +29,16 @@ public sealed class SqliteTokenStore
 
     private readonly DatabaseWriteQueue _writeQueue;
     private readonly IDbContextFactory<OpenVepaDbContext> _dbFactory;
+    private readonly ILogger<SqliteTokenStore> _logger;
 
     public SqliteTokenStore(
         DatabaseWriteQueue writeQueue,
-        IDbContextFactory<OpenVepaDbContext> dbFactory)
+        IDbContextFactory<OpenVepaDbContext> dbFactory,
+        ILogger<SqliteTokenStore> logger)
     {
         _writeQueue = writeQueue ?? throw new ArgumentNullException(nameof(writeQueue));
         _dbFactory = dbFactory ?? throw new ArgumentNullException(nameof(dbFactory));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     /// <summary>
@@ -65,13 +69,22 @@ public sealed class SqliteTokenStore
             CreatedAt = DateTime.UtcNow
         };
 
-        await _writeQueue.EnqueueAndWaitAsync(async db =>
+        try
         {
-            db.AccessTokens.Add(entity);
-            await db.SaveChangesAsync(ct).ConfigureAwait(false);
-        }, ct).ConfigureAwait(false);
+            await _writeQueue.EnqueueAndWaitAsync(async db =>
+            {
+                db.AccessTokens.Add(entity);
+                await db.SaveChangesAsync(ct).ConfigureAwait(false);
+            }, ct).ConfigureAwait(false);
 
-        return new TokenCreateResult(tokenId, plaintext);
+            _logger.LogInformation("Token created: {TokenId}, name={Name}", tokenId, name);
+            return new TokenCreateResult(tokenId, plaintext);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Failed to create token: name={Name}", name);
+            throw;
+        }
     }
 
     /// <summary>
@@ -94,30 +107,41 @@ public sealed class SqliteTokenStore
         }
         catch (FormatException)
         {
+            _logger.LogDebug("Token validation: valid={IsValid}", false);
             return null;
         }
 
-        await using var db = await _dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
-        var tokens = await db.AccessTokens
-            .AsNoTracking()
-            .Where(t => t.RevokedAt == null)
-            .ToListAsync(ct)
-            .ConfigureAwait(false);
-
-        foreach (var token in tokens)
+        try
         {
-            var salt = Convert.FromBase64String(token.Salt);
-            var storedHash = Convert.FromBase64String(token.HashedToken);
-            var computedHash = HashToken(tokenBytes, salt);
+            await using var db = await _dbFactory.CreateDbContextAsync(ct).ConfigureAwait(false);
+            var tokens = await db.AccessTokens
+                .AsNoTracking()
+                .Where(t => t.RevokedAt == null)
+                .ToListAsync(ct)
+                .ConfigureAwait(false);
 
-            if (CryptographicOperations.FixedTimeEquals(storedHash, computedHash))
+            foreach (var token in tokens)
             {
-                await UpdateLastUsedAsync(token.Id, ct).ConfigureAwait(false);
-                return token.Id;
-            }
-        }
+                var salt = Convert.FromBase64String(token.Salt);
+                var storedHash = Convert.FromBase64String(token.HashedToken);
+                var computedHash = HashToken(tokenBytes, salt);
 
-        return null;
+                if (CryptographicOperations.FixedTimeEquals(storedHash, computedHash))
+                {
+                    await UpdateLastUsedAsync(token.Id, ct).ConfigureAwait(false);
+                    _logger.LogDebug("Token validation: valid={IsValid}", true);
+                    return token.Id;
+                }
+            }
+
+            _logger.LogDebug("Token validation: valid={IsValid}", false);
+            return null;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Failed to validate token");
+            throw;
+        }
     }
 
     /// <summary>Revokes a token by id.</summary>
@@ -130,18 +154,28 @@ public sealed class SqliteTokenStore
             throw new ArgumentException("Token id is required.", nameof(tokenId));
         }
 
-        await _writeQueue.EnqueueAndWaitAsync(async db =>
+        try
         {
-            var entity = await db.AccessTokens
-                .FindAsync([tokenId], ct)
-                .ConfigureAwait(false);
-
-            if (entity is not null && entity.RevokedAt is null)
+            await _writeQueue.EnqueueAndWaitAsync(async db =>
             {
-                entity.RevokedAt = DateTime.UtcNow;
-                await db.SaveChangesAsync(ct).ConfigureAwait(false);
-            }
-        }, ct).ConfigureAwait(false);
+                var entity = await db.AccessTokens
+                    .FindAsync([tokenId], ct)
+                    .ConfigureAwait(false);
+
+                if (entity is not null && entity.RevokedAt is null)
+                {
+                    entity.RevokedAt = DateTime.UtcNow;
+                    await db.SaveChangesAsync(ct).ConfigureAwait(false);
+                }
+            }, ct).ConfigureAwait(false);
+
+            _logger.LogInformation("Token revoked: {TokenId}", tokenId);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Failed to revoke token: {TokenId}", tokenId);
+            throw;
+        }
     }
 
     /// <summary>

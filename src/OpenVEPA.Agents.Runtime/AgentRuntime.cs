@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Json;
 
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -28,6 +29,11 @@ public sealed class AgentRuntime : IAgentRuntime
 
     private readonly ConcurrentDictionary<string, List<ChatMessage>> _sessionHistory = new();
     private IReadOnlyList<AgentDefinition>? _agents;
+
+    private static readonly JsonSerializerOptions s_configJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+    };
 
     /// <summary>Initializes a new instance of the <see cref="AgentRuntime"/> class.</summary>
     public AgentRuntime(
@@ -61,6 +67,7 @@ public sealed class AgentRuntime : IAgentRuntime
         var agents = DiscoverAgents();
         var orchestrator = GetOrchestratorAgent(agents);
         var preferences = await LoadPreferencesAsync(ct).ConfigureAwait(false);
+        orchestrator = ApplySavedConfig(orchestrator, preferences);
 
         // Enforce the orchestrator's token budget before any LLM call.
         var budgetCheck = await _budgetTracker.CheckBudgetAsync(
@@ -125,6 +132,7 @@ public sealed class AgentRuntime : IAgentRuntime
         var agents = DiscoverAgents();
         var orchestrator = GetOrchestratorAgent(agents);
         var preferences = await LoadPreferencesAsync(ct).ConfigureAwait(false);
+        orchestrator = ApplySavedConfig(orchestrator, preferences);
 
         // Enforce the orchestrator's token budget.
         var budgetCheck = await _budgetTracker.CheckBudgetAsync(
@@ -205,6 +213,7 @@ public sealed class AgentRuntime : IAgentRuntime
         try
         {
             var preferences = await LoadPreferencesAsync(ct).ConfigureAwait(false);
+            targetAgent = ApplySavedConfig(targetAgent, preferences);
 
             // Build a dynamic system prompt for the target agent.
             var promptContext = new SystemPromptContext(targetAgent, preferences);
@@ -370,4 +379,47 @@ public sealed class AgentRuntime : IAgentRuntime
         if (string.IsNullOrWhiteSpace(message))
             throw new ArgumentException("Message is required.", nameof(message));
     }
+
+    /// <summary>
+    /// Applies user-saved agent configuration (from preferences) over the base agent definition.
+    /// </summary>
+    private static AgentDefinition ApplySavedConfig(AgentDefinition agent, UserPreferences? preferences)
+    {
+        if (preferences is null)
+            return agent;
+
+        var key = $"agent-config:{agent.Name}";
+        if (!preferences.Entries.TryGetValue(key, out var entry) || string.IsNullOrWhiteSpace(entry.Value))
+            return agent;
+
+        try
+        {
+            var saved = JsonSerializer.Deserialize<SavedAgentConfig>(entry.Value, s_configJsonOptions);
+            if (saved is null)
+                return agent;
+
+            return agent with
+            {
+                LlmConfig = saved.LlmConfig ?? agent.LlmConfig,
+                Permissions = saved.Permissions ?? agent.Permissions,
+                TokenBudget = saved.TokenBudget ?? agent.TokenBudget,
+                Triggers = saved.Triggers ?? agent.Triggers,
+                Restrictions = saved.Restrictions ?? agent.Restrictions,
+                Priority = saved.Priority ?? agent.Priority
+            };
+        }
+        catch (Exception)
+        {
+            // Deserialization failure should not break the runtime.
+            return agent;
+        }
+    }
+
+    private sealed record SavedAgentConfig(
+        AgentLlmConfig? LlmConfig,
+        AgentPermissions? Permissions,
+        AgentTokenBudget? TokenBudget,
+        IReadOnlyList<string>? Triggers,
+        IReadOnlyList<string>? Restrictions,
+        int? Priority);
 }

@@ -20,10 +20,19 @@ internal static class ModelListProxy
             ["groq"] = "https://api.groq.com/openai/v1",
             ["together"] = "https://api.together.xyz/v1",
             ["perplexity"] = "https://api.perplexity.ai",
+            ["anthropic"] = "https://api.anthropic.com/v1",
+            ["azure"] = "",
+            ["cohere"] = "https://api.cohere.ai/v1",
         };
 
-    private static readonly HashSet<string> ListableProviders =
-        new(DefaultEndpoints.Keys, StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> ListableProviders = InitListableProviders();
+
+    private static HashSet<string> InitListableProviders()
+    {
+        var set = new HashSet<string>(DefaultEndpoints.Keys, StringComparer.OrdinalIgnoreCase);
+        set.Remove("azure");
+        return set;
+    }
 
     /// <summary>Maximum number of models returned to prevent huge responses.</summary>
     private const int MaxModels = 50;
@@ -63,7 +72,12 @@ internal static class ModelListProxy
         }
         else if (string.Equals(provider, "google", StringComparison.OrdinalIgnoreCase))
         {
-            url = $"{endpoint}/models?key={Uri.EscapeDataString(apiKey)}";
+            // Use the native Generative Language API endpoint for model listing;
+            // strip any /openai suffix that may have been stored.
+            var googleBase = endpoint.EndsWith("/openai", StringComparison.OrdinalIgnoreCase)
+                ? endpoint[..^"/openai".Length]
+                : endpoint;
+            url = $"{googleBase}/models?key={Uri.EscapeDataString(apiKey)}";
         }
         else
         {
@@ -86,6 +100,64 @@ internal static class ModelListProxy
         models.Sort(StringComparer.OrdinalIgnoreCase);
 
         return models.Count > MaxModels ? models[..MaxModels] : models;
+    }
+
+    /// <summary>
+    /// Fetches models with full status and diagnostics for display in the UI.
+    /// </summary>
+    /// <param name="provider">The provider identifier.</param>
+    /// <param name="apiKey">The API key for authentication.</param>
+    /// <param name="endpoint">The base endpoint URL.</param>
+    /// <param name="ct">A cancellation token.</param>
+    /// <returns>A <see cref="ModelQueryResult"/> containing models or error details.</returns>
+    internal static async Task<ModelQueryResult> FetchModelsWithStatusAsync(
+        string provider,
+        string apiKey,
+        string endpoint,
+        CancellationToken ct)
+    {
+        try
+        {
+            var models = await FetchModelsFromProviderAsync(provider, apiKey, endpoint, ct)
+                .ConfigureAwait(false);
+
+            var count = models.Count;
+            var diagnostics = $"Connected successfully. {count} {(count == 1 ? "model" : "models")} available.";
+
+            return new ModelQueryResult(true, models, provider, endpoint, null, diagnostics);
+        }
+        catch (OperationCanceledException)
+        {
+            return new ModelQueryResult(
+                false,
+                [],
+                provider,
+                endpoint,
+                "Request was cancelled or timed out.",
+                $"The request to {provider} at {endpoint} timed out. Check that the service is running and reachable.");
+        }
+        catch (HttpRequestException ex)
+        {
+            return new ModelQueryResult(
+                false,
+                [],
+                provider,
+                endpoint,
+                ex.Message,
+                $"Could not connect to {provider} at {endpoint}. Ensure the service is running and accessible from the Docker container.");
+        }
+#pragma warning disable CA1031 // Catch general exception to return structured error
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            return new ModelQueryResult(
+                false,
+                [],
+                provider,
+                endpoint,
+                ex.Message,
+                $"Unexpected error querying {provider} at {endpoint}: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -163,3 +235,18 @@ internal static class ModelListProxy
         return models;
     }
 }
+
+/// <summary>Result of a model list query with success/error status and diagnostics.</summary>
+/// <param name="Success">Whether the fetch succeeded.</param>
+/// <param name="Models">The list of model identifiers (empty on failure).</param>
+/// <param name="Provider">The provider that was queried.</param>
+/// <param name="Endpoint">The endpoint that was queried.</param>
+/// <param name="Error">Brief error message, or <c>null</c> on success.</param>
+/// <param name="Diagnostics">Detailed diagnostic message for UI display.</param>
+internal sealed record ModelQueryResult(
+    bool Success,
+    List<string> Models,
+    string Provider,
+    string Endpoint,
+    string? Error,
+    string Diagnostics);

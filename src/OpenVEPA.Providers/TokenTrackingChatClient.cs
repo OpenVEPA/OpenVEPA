@@ -51,10 +51,11 @@ public sealed class TokenTrackingChatClient : DelegatingChatClient
         bool success = true;
         string? errorMessage = null;
         ChatResponse? response = null;
+        var actualModel = options?.ModelId ?? _model;
 
         try
         {
-            response = await base.GetResponseAsync(chatMessages, options, cancellationToken);
+            response = await base.GetResponseAsync(chatMessages, options, cancellationToken).ConfigureAwait(false);
             return response;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -67,10 +68,11 @@ public sealed class TokenTrackingChatClient : DelegatingChatClient
         {
             stopwatch.Stop();
             await LogAuditEntryAsync(
+                actualModel,
                 response?.Usage,
                 stopwatch.ElapsedMilliseconds,
                 success,
-                errorMessage);
+                errorMessage).ConfigureAwait(false);
         }
     }
 
@@ -82,8 +84,9 @@ public sealed class TokenTrackingChatClient : DelegatingChatClient
     {
         var stopwatch = Stopwatch.StartNew();
         UsageDetails? lastUsage = null;
+        var actualModel = options?.ModelId ?? _model;
 
-        await foreach (var update in base.GetStreamingResponseAsync(chatMessages, options, cancellationToken))
+        await foreach (var update in base.GetStreamingResponseAsync(chatMessages, options, cancellationToken).ConfigureAwait(false))
         {
             // Usage arrives as UsageContent items within the Contents collection.
             foreach (var content in update.Contents)
@@ -98,10 +101,11 @@ public sealed class TokenTrackingChatClient : DelegatingChatClient
         }
 
         stopwatch.Stop();
-        await LogAuditEntryAsync(lastUsage, stopwatch.ElapsedMilliseconds, true, null);
+        await LogAuditEntryAsync(actualModel, lastUsage, stopwatch.ElapsedMilliseconds, true, null).ConfigureAwait(false);
     }
 
     private async Task LogAuditEntryAsync(
+        string model,
         UsageDetails? usage,
         long latencyMs,
         bool success,
@@ -116,7 +120,7 @@ public sealed class TokenTrackingChatClient : DelegatingChatClient
             Id: Guid.NewGuid().ToString("N"),
             Timestamp: DateTime.UtcNow,
             Provider: _provider,
-            Model: _model,
+            Model: model,
             InputTokens: (int)(usage?.InputTokenCount ?? 0),
             OutputTokens: (int)(usage?.OutputTokenCount ?? 0),
             EstimatedCostUsd: null,

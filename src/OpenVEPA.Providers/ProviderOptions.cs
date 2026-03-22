@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 using Microsoft.Extensions.Configuration;
 
 namespace OpenVEPA.Providers;
@@ -36,6 +38,9 @@ public sealed class OpenAiOptions
 
     /// <summary>Optional custom endpoint for OpenAI-compatible APIs.</summary>
     public string? Endpoint { get; set; }
+
+    /// <summary>Provider name for audit logging. Defaults to "openai".</summary>
+    public string Provider { get; set; } = "openai";
 }
 
 /// <summary>Configuration for the Ollama provider.</summary>
@@ -64,8 +69,25 @@ public sealed class ProviderInstanceOptions
     /// <summary>API endpoint URL.</summary>
     public string? Endpoint { get; set; }
 
-    /// <summary>Selected model identifier.</summary>
-    public string ModelId { get; set; } = "";
+    /// <summary>Default model for this provider instance.</summary>
+    [JsonPropertyName("defaultModel")]
+    [ConfigurationKeyName("defaultModel")]
+    public string? DefaultModel { get; set; }
+
+    /// <summary>Available models. Empty list means fetch dynamically from provider API.</summary>
+    [JsonPropertyName("availableModels")]
+    [ConfigurationKeyName("availableModels")]
+    public List<string>? AvailableModels { get; set; }
+
+    /// <summary>Backward compatibility: maps legacy ModelId to DefaultModel.</summary>
+    [JsonPropertyName("modelId")]
+    [ConfigurationKeyName("ModelId")]
+    [Obsolete("Use DefaultModel instead.")]
+    public string? ModelId
+    {
+        get => DefaultModel;
+        set { if (DefaultModel is null) DefaultModel = value; }
+    }
 
     /// <summary>API key (optional, not required for Ollama).</summary>
     public string? ApiKey { get; set; }

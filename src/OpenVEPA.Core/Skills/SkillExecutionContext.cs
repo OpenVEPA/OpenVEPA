@@ -2,6 +2,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
+using OpenVEPA.Core.Agents;
 using OpenVEPA.Core.Preferences;
 
 namespace OpenVEPA.Core.Skills;
@@ -12,4 +13,5 @@ public sealed record SkillExecutionContext(
     ILogger Logger,
     IConfiguration Configuration,
     UserPreferences? UserPreferences,
-    CancellationToken CancellationToken);
+    CancellationToken CancellationToken,
+    AgentPermissions? Permissions = null);

@@ -58,7 +58,7 @@ public sealed class UnifiedWebUiTests : IDisposable
     [Fact]
     public void IsSetupComplete_ReturnsTrue_WhenConfigFileExists()
     {
-        File.WriteAllText(Path.Combine(_tempDir, "appsettings.json"), "{}");
+        File.WriteAllText(Path.Combine(_tempDir, "openvepa.conf"), "{}");
 
         var svc = new SetupCompletionService(_tempDir);
 
@@ -82,7 +82,7 @@ public sealed class UnifiedWebUiTests : IDisposable
         var svc = new SetupCompletionService(_tempDir);
         svc.IsSetupComplete.Should().BeFalse();
 
-        File.WriteAllText(Path.Combine(_tempDir, "appsettings.json"), "{}");
+        File.WriteAllText(Path.Combine(_tempDir, "openvepa.conf"), "{}");
         svc.Refresh();
 
         svc.IsSetupComplete.Should().BeTrue();
@@ -245,7 +245,7 @@ public sealed class UnifiedWebUiTests : IDisposable
     {
         if (setupComplete)
         {
-            File.WriteAllText(Path.Combine(_tempDir, "appsettings.json"), "{}");
+            File.WriteAllText(Path.Combine(_tempDir, "openvepa.conf"), "{}");
         }
 
         var service = new SetupCompletionService(_tempDir);
@@ -285,7 +285,7 @@ public sealed class UnifiedWebUiTests : IDisposable
 
         if (setupComplete)
         {
-            File.WriteAllText(Path.Combine(homeDir, "appsettings.json"), "{}");
+            File.WriteAllText(Path.Combine(homeDir, "openvepa.conf"), "{}");
         }
 
         var setupService = new SetupCompletionService(homeDir);

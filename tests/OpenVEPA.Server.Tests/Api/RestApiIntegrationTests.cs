@@ -18,6 +18,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using OpenVEPA.Agents.Runtime;
 using OpenVEPA.Core.Agents;
 using OpenVEPA.Core.Sessions;
 using OpenVEPA.Core.Skills;
@@ -239,7 +240,7 @@ public sealed class SystemApiIntegrationTests
         configuration.Providers[0].Name.Should().Be("ollama");
         configuration.Providers[0].DisplayName.Should().Be("Ollama");
         configuration.Providers[0].Type.Should().Be("ollama");
-        configuration.Providers[0].ModelId.Should().Be("llama3.2");
+        configuration.Providers[0].DefaultModel.Should().Be("llama3.2");
         configuration.Providers[0].Endpoint.Should().Be("http://localhost:11434");
     }
 
@@ -272,12 +273,12 @@ public sealed class SystemApiIntegrationTests
 
         update.Should().NotBeNull();
         update!.Updated.Should().BeTrue();
-        update.RequiresRestart.Should().BeTrue();
+        update.RequiresRestart.Should().BeFalse();
         update.Configuration.DefaultProvider.Should().Be("openai");
         update.Configuration.Providers.Should().Contain(p => p.Name == "openai");
 
         var openaiEntry = update.Configuration.Providers.First(p => p.Name == "openai");
-        openaiEntry.ModelId.Should().Be("gpt-5-mini");
+        openaiEntry.DefaultModel.Should().Be("gpt-5-mini");
         openaiEntry.Endpoint.Should().Be("https://api.example.test/v1");
 
         using var readResponse = await host.Client.GetAsync("/api/system/llm-config");
@@ -286,7 +287,7 @@ public sealed class SystemApiIntegrationTests
         configuration.Should().NotBeNull();
         configuration!.DefaultProvider.Should().Be("openai");
         configuration.Providers.Should().Contain(p => p.Name == "openai");
-        configuration.Providers.First(p => p.Name == "openai").ModelId.Should().Be("gpt-5-mini");
+        configuration.Providers.First(p => p.Name == "openai").DefaultModel.Should().Be("gpt-5-mini");
         configuration.Providers.First(p => p.Name == "openai").Endpoint.Should().Be("https://api.example.test/v1");
     }
 
@@ -416,8 +417,8 @@ internal sealed class SystemApiTestHost : IAsyncDisposable
     {
         var rootPath = Path.Combine(Path.GetTempPath(), $"openvepa-system-api-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(rootPath);
-        // Write user config (appsettings.json) in the new instance-based format.
-        var userConfigPath = Path.Combine(rootPath, "appsettings.json");
+        // Write user config (openvepa.conf) in the new instance-based format.
+        var userConfigPath = Path.Combine(rootPath, "openvepa.conf");
         await File.WriteAllTextAsync(
             userConfigPath,
             """
@@ -461,6 +462,9 @@ internal sealed class SystemApiTestHost : IAsyncDisposable
         builder.Services.AddSingleton(setupService);
         builder.Services.AddSingleton<ISessionStore>(sessionStore);
         builder.Services.AddDbContextFactory<OpenVepaDbContext>(options => options.UseSqlite(connection));
+        builder.Services.AddSingleton<AgentMdParser>();
+        builder.Services.Configure<AgentOptions>(o => o.AgentsDirectory = Path.Combine(rootPath, "agents"));
+        builder.Services.AddSingleton<AgentDirectory>();
 
         var app = builder.Build();
         app.Urls.Add("http://127.0.0.1:0");

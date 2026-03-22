@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenVEPA.Server\OpenVEPA.Server.csproj" />
+    <ProjectReference Include="..\..\src\OpenVEPA.Providers\OpenVEPA.Providers.csproj" />
     <ProjectReference Include="..\..\src\OpenVEPA.Core\OpenVEPA.Core.csproj" />
   </ItemGroup>
 

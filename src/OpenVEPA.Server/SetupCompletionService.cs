@@ -2,7 +2,7 @@ namespace OpenVEPA.Server;
 
 /// <summary>
 /// Tracks whether initial setup has been completed.
-/// Checks for the existence of a user-written appsettings.json in the OpenVEPA home directory.
+/// Checks for the existence of a user-written openvepa.conf in the OpenVEPA home directory.
 /// </summary>
 internal sealed class SetupCompletionService
 {
@@ -15,7 +15,7 @@ internal sealed class SetupCompletionService
     /// <param name="openVepaHome">The OpenVEPA home directory path.</param>
     internal SetupCompletionService(string openVepaHome)
     {
-        _configPath = Path.Combine(openVepaHome, "appsettings.json");
+        _configPath = Path.Combine(openVepaHome, "openvepa.conf");
         _isComplete = File.Exists(_configPath);
     }
 

@@ -62,7 +62,7 @@ public static class StorageServiceExtensions
 
         services.AddSingleton<SqliteSessionStore>();
         services.AddSingleton<ISessionStore>(sp => sp.GetRequiredService<SqliteSessionStore>());
-        services.AddScoped<IUserProfileService, SqliteUserProfileService>();
+        services.AddSingleton<IUserProfileService, SqliteUserProfileService>();
         services.AddSingleton<SqliteTokenStore>();
         services.AddSingleton<SqliteLlmAuditLogger>();
 

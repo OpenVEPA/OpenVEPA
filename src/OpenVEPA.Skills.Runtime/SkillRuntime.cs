@@ -80,6 +80,28 @@ public sealed class SkillRuntime : ISkillRuntime
                 TokenUsage: null);
         }
 
+        // Enforce agent permissions against skill-declared required capabilities.
+        if (context.Permissions is { } agentPerms
+            && skill.Manifest.Permissions?.RequiredCapabilities is { Count: > 0 } required)
+        {
+            foreach (var cap in required)
+            {
+                if (!agentPerms.IsAllowed(cap))
+                {
+                    _logger.LogWarning(
+                        "Skill '{SkillName}' requires capability '{Capability}' which the agent does not have",
+                        skillName, cap);
+                    return new SkillResult(
+                        Success: false,
+                        Data: null,
+                        Error: new SkillError(
+                            SkillErrorKind.Permanent,
+                            $"Permission denied: skill '{skillName}' requires the '{cap}' capability."),
+                        TokenUsage: null);
+                }
+            }
+        }
+
         try
         {
             return await skill.ExecuteAsync(input, context, ct).ConfigureAwait(false);

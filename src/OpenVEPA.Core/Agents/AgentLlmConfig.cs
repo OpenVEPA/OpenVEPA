@@ -9,4 +9,6 @@ public sealed record AgentLlmConfig(
     /// <summary>Sampling temperature (0.0 – 2.0).</summary>
     double? Temperature = null,
     /// <summary>Maximum response tokens.</summary>
-    int? MaxTokens = null);
+    int? MaxTokens = null,
+    /// <summary>Optional fallback LLM configuration used when the primary provider/model is unavailable.</summary>
+    AgentLlmConfig? Fallback = null);

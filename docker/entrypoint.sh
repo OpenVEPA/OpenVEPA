@@ -13,7 +13,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 OPENVEPA_HOME="${OPENVEPA_HOME:-/home/openvepa/.openvepa}"
 PORT="${OPENVEPA_PORT:-8371}"
-CONFIG_FILE="${OPENVEPA_HOME}/appsettings.json"
+CONFIG_FILE="${OPENVEPA_HOME}/openvepa.conf"
 APP_PATH="/app/OpenVEPA.Cli"
 
 # ---------------------------------------------------------------------------

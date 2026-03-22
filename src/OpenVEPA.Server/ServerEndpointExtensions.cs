@@ -21,6 +21,10 @@ public static class ServerEndpointExtensions
     {
         if (app is null) throw new ArgumentNullException(nameof(app));
 
+        // Global exception handler — must be the VERY FIRST middleware so it
+        // catches errors from all downstream middleware (including DI failures).
+        app.UseMiddleware<GlobalExceptionMiddleware>();
+
         // Setup redirect middleware — must be BEFORE auth so unauthenticated
         // users are redirected to the wizard on first run.
         app.UseMiddleware<SetupRedirectMiddleware>();

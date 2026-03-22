@@ -38,14 +38,22 @@ public sealed class SqliteSessionStore : ISessionStore
             UpdatedAt: DateTime.UtcNow,
             Status: SessionStatus.Active);
 
-        await _writeQueue.EnqueueAndWaitAsync(async db =>
+        try
         {
-            db.Sessions.Add(ToEntity(session));
-            await db.SaveChangesAsync(ct).ConfigureAwait(false);
-        }, ct).ConfigureAwait(false);
+            await _writeQueue.EnqueueAndWaitAsync(async db =>
+            {
+                db.Sessions.Add(ToEntity(session));
+                await db.SaveChangesAsync(ct).ConfigureAwait(false);
+            }, ct).ConfigureAwait(false);
 
-        _logger.LogDebug("Created session {SessionId}", session.Id);
-        return session;
+            _logger.LogInformation("Session created: {SessionId}", session.Id);
+            return session;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Failed to create session {SessionId}", session.Id);
+            throw;
+        }
     }
 
     /// <summary>Gets a session by id, or null if not found.</summary>
@@ -91,21 +99,29 @@ public sealed class SqliteSessionStore : ISessionStore
             throw new ArgumentNullException(nameof(message));
         }
 
-        await _writeQueue.EnqueueAndWaitAsync(async db =>
+        try
         {
-            db.Messages.Add(ToMessageEntity(message));
-
-            // Update session timestamp.
-            var session = await db.Sessions.FindAsync([message.SessionId], ct).ConfigureAwait(false);
-            if (session is not null)
+            await _writeQueue.EnqueueAndWaitAsync(async db =>
             {
-                session.UpdatedAt = DateTime.UtcNow;
-            }
+                db.Messages.Add(ToMessageEntity(message));
 
-            await db.SaveChangesAsync(ct).ConfigureAwait(false);
-        }, ct).ConfigureAwait(false);
+                // Update session timestamp.
+                var session = await db.Sessions.FindAsync([message.SessionId], ct).ConfigureAwait(false);
+                if (session is not null)
+                {
+                    session.UpdatedAt = DateTime.UtcNow;
+                }
 
-        _logger.LogDebug("Added message {MessageId} to session {SessionId}", message.Id, message.SessionId);
+                await db.SaveChangesAsync(ct).ConfigureAwait(false);
+            }, ct).ConfigureAwait(false);
+
+            _logger.LogDebug("Message added to session {SessionId}: role={Role}", message.SessionId, message.Role);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Failed to add message to session {SessionId}", message.SessionId);
+            throw;
+        }
     }
 
     /// <summary>Gets messages for a session with pagination support.</summary>

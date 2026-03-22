@@ -23,6 +23,7 @@ public static class AgentServiceExtensions
 
         services.AddSingleton<AgentMdParser>();
         services.AddSingleton<AgentDirectory>();
+        services.AddSingleton<ISystemPromptBuilder, SystemPromptBuilder>();
         services.AddSingleton<AssistantAgent>();
         services.AddSingleton<IAgentRuntime, AgentRuntime>();
         services.AddSingleton<IAgentTokenBudgetTracker, AgentTokenBudgetTracker>();

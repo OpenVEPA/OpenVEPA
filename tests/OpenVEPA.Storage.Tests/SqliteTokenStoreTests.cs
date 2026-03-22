@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace OpenVEPA.Storage.Tests;
 
@@ -10,7 +11,7 @@ public sealed class SqliteTokenStoreTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await _fixture.InitializeAsync();
-        _store = new SqliteTokenStore(_fixture.WriteQueue, _fixture.DbFactory);
+        _store = new SqliteTokenStore(_fixture.WriteQueue, _fixture.DbFactory, NullLogger<SqliteTokenStore>.Instance);
     }
 
     public async Task DisposeAsync()

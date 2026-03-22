@@ -64,6 +64,23 @@ select:focus{outline:none;border-color:#50fa7b}
 }
 .btn-fetch:hover:not(:disabled){background:#3a3a5e}
 .btn-fetch:disabled{opacity:.5;cursor:not-allowed}
+.model-fetch-status{
+    padding:.6rem .8rem;border-radius:6px;margin-bottom:1rem;font-size:.85rem;line-height:1.5;
+}
+.model-fetch-status.loading{
+    background:rgba(80,250,123,.08);color:#ccc;display:flex;align-items:center;gap:.5rem;
+}
+.model-fetch-status.success{
+    background:rgba(80,250,123,.15);color:#50fa7b;
+}
+.model-fetch-status.error{
+    background:rgba(255,85,85,.15);color:#ff5555;
+}
+.model-fetch-status .error-details{
+    margin-top:.4rem;font-size:.8rem;color:#ccc;
+}
+.fetch-spinner{display:inline-block;width:.9rem;height:.9rem;border:2px solid #555;border-top-color:#50fa7b;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
 input[type="checkbox"]{accent-color:#50fa7b;width:1.1rem;height:1.1rem}
 .checkbox-group{display:flex;align-items:center;gap:.5rem;margin-bottom:1rem}
 .checkbox-group label{margin-bottom:0;cursor:pointer}
@@ -154,6 +171,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
                 <div class="section-title">Model Selection</div>
                 <p class="step-description" style="margin-bottom:1rem">Select the language model that will power your assistant.</p>
                 <label for="modelId">Model</label>
+                <div id="modelFetchStatus"></div>
                 <div class="model-row">
                     <select id="modelId"></select>
                     <button type="button" class="btn-fetch hidden" id="fetchModelsBtn">Fetch Models</button>
@@ -215,56 +233,48 @@ button:disabled{opacity:.5;cursor:not-allowed}
         ollama: {
             name:'Ollama (Local)', requiresKey:false,
             endpoint:'http://localhost:11434', defaultModel:'llama3.2',
-            models:['llama3.2','llama3.1','llama3.3','codellama','mistral','mixtral','phi3','gemma2','qwen2.5','deepseek-r1'],
-            canFetch:true, fetchType:'ollama',
+            canFetch:true,
             desc:'Run models locally on your own hardware \u2014 free and private.'
         },
         openai: {
             name:'OpenAI', requiresKey:true,
             endpoint:'https://api.openai.com/v1', defaultModel:'gpt-4o',
-            models:['gpt-4o','gpt-4o-mini','gpt-4-turbo','gpt-4','gpt-3.5-turbo','o1','o1-mini','o3-mini'],
-            canFetch:true, fetchType:'openai',
+            canFetch:true,
             desc:'GPT-4o and the full OpenAI model family.'
         },
         google: {
             name:'Google (Gemini)', requiresKey:true,
             endpoint:'https://generativelanguage.googleapis.com/v1beta', defaultModel:'gemini-2.0-flash',
-            models:['gemini-2.0-flash','gemini-2.0-flash-lite','gemini-1.5-pro','gemini-1.5-flash'],
-            canFetch:true, fetchType:'google',
+            canFetch:true,
             desc:'Google Gemini models with multimodal capabilities.'
         },
         anthropic: {
             name:'Anthropic (Claude)', requiresKey:true,
             endpoint:'https://api.anthropic.com/v1', defaultModel:'claude-sonnet-4-20250514',
-            models:['claude-sonnet-4-20250514','claude-3-5-sonnet-20241022','claude-3-5-haiku-20241022','claude-3-opus-20240229'],
             canFetch:false,
             desc:'Claude models by Anthropic \u2014 strong reasoning and safety.'
         },
         mistral: {
             name:'Mistral AI', requiresKey:true,
             endpoint:'https://api.mistral.ai/v1', defaultModel:'mistral-large-latest',
-            models:['mistral-large-latest','mistral-medium-latest','mistral-small-latest','open-mistral-nemo','codestral-latest'],
-            canFetch:true, fetchType:'openai',
+            canFetch:true,
             desc:'European AI lab with efficient open-weight models.'
         },
         groq: {
             name:'Groq', requiresKey:true,
             endpoint:'https://api.groq.com/openai/v1', defaultModel:'llama-3.3-70b-versatile',
-            models:['llama-3.3-70b-versatile','llama-3.1-8b-instant','mixtral-8x7b-32768','gemma2-9b-it'],
-            canFetch:true, fetchType:'openai',
+            canFetch:true,
             desc:'Ultra-fast inference on custom LPU hardware.'
         },
         azure: {
             name:'Azure OpenAI', requiresKey:true,
             endpoint:'', defaultModel:'gpt-4o',
-            models:['gpt-4o','gpt-4o-mini','gpt-4-turbo','gpt-4','gpt-35-turbo'],
             canFetch:false,
             desc:'OpenAI models hosted on your Azure deployment.'
         },
         cohere: {
             name:'Cohere', requiresKey:true,
             endpoint:'https://api.cohere.com/v2', defaultModel:'command-r-plus',
-            models:['command-r-plus','command-r','command-light'],
             canFetch:false,
             desc:'Enterprise-focused models with RAG strengths.'
         },
@@ -272,15 +282,13 @@ button:disabled{opacity:.5;cursor:not-allowed}
             name:'Together AI', requiresKey:true,
             endpoint:'https://api.together.xyz/v1',
             defaultModel:'meta-llama/Llama-3.3-70B-Instruct-Turbo',
-            models:['meta-llama/Llama-3.3-70B-Instruct-Turbo','mistralai/Mixtral-8x22B-Instruct-v0.1','Qwen/Qwen2.5-72B-Instruct-Turbo'],
-            canFetch:true, fetchType:'openai',
+            canFetch:true,
             desc:'Run open-source models in the cloud at scale.'
         },
         perplexity: {
             name:'Perplexity', requiresKey:true,
             endpoint:'https://api.perplexity.ai', defaultModel:'sonar-pro',
-            models:['sonar-pro','sonar','sonar-reasoning-pro','sonar-reasoning'],
-            canFetch:true, fetchType:'openai',
+            canFetch:true,
             desc:'Search-augmented models with built-in web access.'
         }
     };
@@ -364,33 +372,80 @@ button:disabled{opacity:.5;cursor:not-allowed}
     }
 
     // Fetch models via backend proxy
+    var modelFetchStatusEl = document.getElementById('modelFetchStatus');
+
+    function setModelFetchStatus(type, html){
+        if(!modelFetchStatusEl) return;
+        if(!type){ modelFetchStatusEl.innerHTML = ''; modelFetchStatusEl.className = ''; return; }
+        modelFetchStatusEl.className = 'model-fetch-status ' + type;
+        modelFetchStatusEl.innerHTML = html;
+    }
+
     function fetchModels(showButton){
         var pk = providerSelect.value;
         var p = providers[pk];
-        if(!p.canFetch) return;
+        if(!p.canFetch){
+            // Provider does not support fetching; show custom model input only
+            modelSelect.innerHTML = '';
+            var custom = document.createElement('option');
+            custom.value = '__custom__';
+            custom.textContent = '\u2014 Enter model manually \u2014';
+            modelSelect.appendChild(custom);
+            customModelInput.classList.remove('hidden');
+            customModelInput.value = customModelInput.value || p.defaultModel;
+            setModelFetchStatus('', '');
+            return;
+        }
 
         if(showButton){
-            fetchBtn.textContent = 'Loading\u2026';
+            fetchBtn.textContent = 'Fetching\u2026';
             fetchBtn.disabled = true;
         }
 
+        var ep = endpointInput.value || p.endpoint;
+        setModelFetchStatus('loading', '<span class="fetch-spinner"></span> Connecting to ' + escapeHtmlSimple(p.name) + ' at ' + escapeHtmlSimple(ep) + '\u2026');
+
         var params = 'provider=' + encodeURIComponent(pk);
         if(apiKeyInput.value) params += '&apiKey=' + encodeURIComponent(apiKeyInput.value);
-        var ep = endpointInput.value || p.endpoint;
         if(ep) params += '&endpoint=' + encodeURIComponent(ep);
 
         fetch('/init/api/models?' + params)
-            .then(function(res){
-                if(!res.ok) return res.json().then(function(d){ throw new Error(d.error || 'HTTP ' + res.status); });
-                return res.json();
-            })
+            .then(function(res){ return res.json(); })
             .then(function(data){
-                if(data.models && data.models.length > 0){
+                if(data.success && data.models && data.models.length > 0){
                     populateModels(data.models, p.defaultModel);
+                    customModelInput.classList.add('hidden');
+                    setModelFetchStatus('success', '\u2705 Connected! Found ' + data.models.length + ' models available.');
+                } else {
+                    // Fetch returned but no models or explicit failure
+                    var errMsg = data.error || 'No models returned.';
+                    var diag = data.diagnostics || '';
+                    if(pk === 'ollama'){
+                        diag = diag || 'Make sure Ollama is running and accessible from the Docker container (use host.docker.internal or the container network IP, not localhost).';
+                    }
+                    modelSelect.innerHTML = '';
+                    var custom = document.createElement('option');
+                    custom.value = '__custom__';
+                    custom.textContent = '\u2014 Enter model manually \u2014';
+                    modelSelect.appendChild(custom);
+                    customModelInput.classList.remove('hidden');
+                    customModelInput.value = customModelInput.value || p.defaultModel;
+                    setModelFetchStatus('error', '\u274c <strong>Could not fetch models</strong> \u2014 ' + escapeHtmlSimple(errMsg) + (diag ? '<div class="error-details">' + escapeHtmlSimple(diag) + '</div>' : ''));
                 }
             })
             .catch(function(err){
-                console.warn('Model fetch failed:', err.message);
+                var ep2 = endpointInput.value || p.endpoint;
+                var hint = pk === 'ollama'
+                    ? 'Make sure Ollama is running and accessible from the Docker container (use host.docker.internal or the container network IP, not localhost).'
+                    : 'Check that the endpoint is correct and the service is reachable.';
+                modelSelect.innerHTML = '';
+                var custom = document.createElement('option');
+                custom.value = '__custom__';
+                custom.textContent = '\u2014 Enter model manually \u2014';
+                modelSelect.appendChild(custom);
+                customModelInput.classList.remove('hidden');
+                customModelInput.value = customModelInput.value || p.defaultModel;
+                setModelFetchStatus('error', '\u274c <strong>Connection failed</strong> \u2014 ' + escapeHtmlSimple(err.message) + '<div class="error-details">' + escapeHtmlSimple(hint) + '</div>');
             })
             .finally(function(){
                 if(showButton){
@@ -398,6 +453,11 @@ button:disabled{opacity:.5;cursor:not-allowed}
                     fetchBtn.disabled = false;
                 }
             });
+    }
+
+    function escapeHtmlSimple(s){
+        if(!s) return '';
+        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
     fetchBtn.addEventListener('click', function(){ fetchModels(true); });
@@ -467,15 +527,24 @@ button:disabled{opacity:.5;cursor:not-allowed}
             }
         }
         if(step === 3){
-            // Populate models for selected provider (hardcoded fallback)
-            populateModels(p.models, p.defaultModel);
+            // Start with empty dropdown; models fetched dynamically only
+            modelSelect.innerHTML = '';
             customModelInput.classList.add('hidden');
             customModelInput.value = '';
+            setModelFetchStatus('', '');
             if(p.canFetch){
                 fetchBtn.classList.remove('hidden');
                 fetchModels(false);
             } else {
                 fetchBtn.classList.add('hidden');
+                // Provider does not support listing; show manual entry
+                var custom = document.createElement('option');
+                custom.value = '__custom__';
+                custom.textContent = '\u2014 Enter model manually \u2014';
+                modelSelect.appendChild(custom);
+                customModelInput.classList.remove('hidden');
+                customModelInput.value = p.defaultModel;
+                setModelFetchStatus('', '');
             }
         }
         if(step === 5){

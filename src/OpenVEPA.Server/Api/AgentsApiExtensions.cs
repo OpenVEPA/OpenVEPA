@@ -3,6 +3,8 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 using OpenVEPA.Agents.Runtime;
 using OpenVEPA.Core.Agents;
@@ -15,7 +17,10 @@ internal static class AgentsApiExtensions
 {
     private const string ConfigCategory = "agent-config";
 
-    private static readonly JsonSerializerOptions s_jsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions s_jsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+    };
 
     /// <summary>
     /// Maps authenticated REST endpoints under <c>/api/agents</c>.
@@ -25,6 +30,9 @@ internal static class AgentsApiExtensions
     internal static WebApplication MapAgentsApiEndpoints(this WebApplication app)
     {
         ArgumentNullException.ThrowIfNull(app);
+
+        var logger = app.Services.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("OpenVEPA.Api.Agents");
 
         RouteGroupBuilder agents = app.MapGroup("/api/agents")
             .RequireAuthorization();
@@ -47,10 +55,15 @@ internal static class AgentsApiExtensions
                     agent.Triggers?.Count ?? 0))
                 .ToArray();
 
+            logger.LogDebug("Listing {Count} agents", agents.Length);
             return Results.Ok(agents);
         });
 
-        agents.MapGet("/{name}", (string name, AgentDirectory agentDirectory) =>
+        agents.MapGet("/{name}", async (
+            string name,
+            AgentDirectory agentDirectory,
+            IUserProfileService profileService,
+            CancellationToken ct) =>
         {
             var definition = FindAgent(agentDirectory, name);
             if (definition is null)
@@ -58,18 +71,30 @@ internal static class AgentsApiExtensions
                 return Results.NotFound();
             }
 
+            // Load saved config from preferences and merge over base definition.
+            var preferenceKey = $"agent-config:{definition.Name}";
+            var savedConfig = await LoadSavedAgentConfigAsync(profileService, preferenceKey, logger, ct)
+                .ConfigureAwait(false);
+
+            logger.LogDebug("Loading agent config for {AgentName}, hasSavedConfig={HasSaved}",
+                name, savedConfig is not null);
+
+            var mergedDefinition = savedConfig is not null
+                ? MergeConfig(definition, savedConfig)
+                : definition;
+
             var response = new AgentDetailResponse(
-                definition.Name,
-                definition.Description,
-                definition.AutonomyLevel,
-                definition.Skills,
-                definition.IsSystem,
-                definition.Priority,
-                definition.LlmConfig,
-                definition.Permissions,
-                definition.TokenBudget,
-                definition.Triggers,
-                definition.Restrictions);
+                mergedDefinition.Name,
+                mergedDefinition.Description,
+                mergedDefinition.AutonomyLevel,
+                mergedDefinition.Skills,
+                mergedDefinition.IsSystem,
+                mergedDefinition.Priority,
+                mergedDefinition.LlmConfig,
+                mergedDefinition.Permissions,
+                mergedDefinition.TokenBudget,
+                mergedDefinition.Triggers,
+                mergedDefinition.Restrictions);
 
             return Results.Ok(response);
         });
@@ -94,6 +119,11 @@ internal static class AgentsApiExtensions
 
             var json = JsonSerializer.Serialize(request, s_jsonOptions);
             var preferenceKey = $"agent-config:{agent.Name}";
+
+            logger.LogInformation("Saving agent config for {AgentName}: provider={Provider}, model={Model}",
+                agent.Name,
+                request.LlmConfig?.Provider ?? "(default)",
+                request.LlmConfig?.Model ?? "(default)");
 
             await profileService.SetExplicitPreferenceAsync(
                     preferenceKey, json, ConfigCategory, ct)
@@ -122,6 +152,47 @@ internal static class AgentsApiExtensions
         });
 
         return app;
+    }
+
+    private static async Task<AgentConfigUpdateRequest?> LoadSavedAgentConfigAsync(
+        IUserProfileService profileService,
+        string preferenceKey,
+        ILogger logger,
+        CancellationToken ct)
+    {
+        try
+        {
+            var preferences = await profileService.GetRelevantPreferencesAsync(ConfigCategory, ct)
+                .ConfigureAwait(false);
+
+            if (preferences.Entries.TryGetValue(preferenceKey, out var entry)
+                && !string.IsNullOrWhiteSpace(entry.Value))
+            {
+                logger.LogDebug("Found saved agent preference for key {PreferenceKey}", preferenceKey);
+                return JsonSerializer.Deserialize<AgentConfigUpdateRequest>(entry.Value, s_jsonOptions);
+            }
+
+            logger.LogDebug("No saved agent preference found for key {PreferenceKey}", preferenceKey);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to load saved agent preference for key {PreferenceKey}", preferenceKey);
+        }
+
+        return null;
+    }
+
+    private static AgentDefinition MergeConfig(AgentDefinition baseDefinition, AgentConfigUpdateRequest saved)
+    {
+        return baseDefinition with
+        {
+            LlmConfig = saved.LlmConfig ?? baseDefinition.LlmConfig,
+            Permissions = saved.Permissions ?? baseDefinition.Permissions,
+            TokenBudget = saved.TokenBudget ?? baseDefinition.TokenBudget,
+            Triggers = saved.Triggers ?? baseDefinition.Triggers,
+            Restrictions = saved.Restrictions ?? baseDefinition.Restrictions,
+            Priority = saved.Priority ?? baseDefinition.Priority
+        };
     }
 
     private static AgentDefinition? FindAgent(AgentDirectory agentDirectory, string name)

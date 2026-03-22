@@ -129,26 +129,27 @@ public sealed class ModelProxyTests : IAsyncLifetime
     }
 
     [Theory]
-    [InlineData("anthropic")]
     [InlineData("azure")]
-    [InlineData("cohere")]
-    public async Task Unsupported_Provider_Returns_BadRequest(string provider)
+    public async Task Unsupported_Provider_Returns_Ok_With_Error(string provider)
     {
         var response = await _client!.GetAsync($"/api/models?provider={provider}");
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var body = await ReadJsonBodyAsync(response);
+        body.GetProperty("success").GetBoolean().Should().BeFalse();
         body.GetProperty("error").GetString()
             .Should().Contain("does not support");
     }
 
     [Fact]
-    public async Task Unknown_Provider_Returns_BadRequest()
+    public async Task Unknown_Provider_Returns_Ok_With_Error()
     {
         var response = await _client!.GetAsync("/api/models?provider=nonexistent");
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await ReadJsonBodyAsync(response);
+        body.GetProperty("success").GetBoolean().Should().BeFalse();
     }
 
     #endregion
@@ -230,18 +231,22 @@ public sealed class ModelProxyTests : IAsyncLifetime
     #region Error handling
 
     [Fact]
-    public async Task Unreachable_Upstream_Returns_BadGateway()
+    public async Task Unreachable_Upstream_Returns_Ok_With_Error()
     {
         var deadPort = FindFreePort();
 
         var response = await _client!.GetAsync(
             $"/api/models?provider=ollama&endpoint=http://localhost:{deadPort}");
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadGateway);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var body = await ReadJsonBodyAsync(response);
+        body.GetProperty("success").GetBoolean().Should().BeFalse();
+        body.GetProperty("error").GetString().Should().NotBeNullOrEmpty();
     }
 
     [Fact]
-    public async Task Unreachable_Upstream_Error_Contains_Message()
+    public async Task Unreachable_Upstream_Error_Contains_Diagnostics()
     {
         var deadPort = FindFreePort();
 
@@ -249,8 +254,8 @@ public sealed class ModelProxyTests : IAsyncLifetime
             $"/api/models?provider=ollama&endpoint=http://localhost:{deadPort}");
 
         var body = await ReadJsonBodyAsync(response);
-        body.GetProperty("error").GetString()
-            .Should().Contain("Failed to fetch models");
+        body.GetProperty("diagnostics").GetString()
+            .Should().Contain("Could not connect");
     }
 
     #endregion

@@ -124,6 +124,7 @@ RUN chmod +x /entrypoint.sh
 ENV OPENVEPA_HOME=/home/openvepa/.openvepa \
     DOTNET_RUNNING_IN_CONTAINER=true \
     OPENVEPA_PORT=8371 \
+    OPENVEPA_LOG_LEVEL=Information \
     SSH_ENABLED=false
 
 # Provider configuration (empty = use defaults or setup wizard)

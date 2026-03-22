@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using OpenVEPA.Agents.Runtime;
 using OpenVEPA.Cli.Commands;
 using OpenVEPA.Cli.Infrastructure;
@@ -23,12 +25,44 @@ var documentsPath = Path.Combine(openvepaHome, "data", "documents");
 var builder = WebApplication.CreateBuilder(args);
 
 // Load persisted configuration from the OpenVEPA home directory (survives container rebuilds).
-var homeConfigPath = Path.Combine(openvepaHome, "appsettings.json");
+var homeConfigPath = Path.Combine(openvepaHome, "openvepa.conf");
 builder.Configuration.AddJsonFile(homeConfigPath, optional: true, reloadOnChange: true);
 
-builder.Host.UseSerilog((_, configuration) => configuration
-    .MinimumLevel.Information()
-    .WriteTo.Console());
+builder.Host.UseSerilog((context, configuration) =>
+{
+    var logLevel = Environment.GetEnvironmentVariable("OPENVEPA_LOG_LEVEL");
+    var minimumLevel = logLevel?.ToLowerInvariant() switch
+    {
+        "debug" => Serilog.Events.LogEventLevel.Debug,
+        "verbose" or "trace" => Serilog.Events.LogEventLevel.Verbose,
+        "warning" or "warn" => Serilog.Events.LogEventLevel.Warning,
+        "error" => Serilog.Events.LogEventLevel.Error,
+        _ => Serilog.Events.LogEventLevel.Information
+    };
+
+    var homeDir = Environment.GetEnvironmentVariable("OPENVEPA_HOME")
+        ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".openvepa");
+    var logDir = Path.Combine(homeDir, "logs");
+    Directory.CreateDirectory(logDir);
+
+    configuration
+        .MinimumLevel.Is(minimumLevel)
+        .MinimumLevel.Override("Microsoft", Serilog.Events.LogEventLevel.Warning)
+        .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Warning)
+        .MinimumLevel.Override("System.Net.Http", Serilog.Events.LogEventLevel.Warning)
+        .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+        .WriteTo.File(
+            Path.Combine(logDir, "openvepa-.log"),
+            rollingInterval: RollingInterval.Day,
+            retainedFileCountLimit: 7,
+            outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext} {Message:lj}{NewLine}{Exception}",
+            shared: true);
+});
+
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+});
 
 builder.Services.AddSingleton<WebApplicationHolder>();
 builder.Services.AddOpenVepaStorage(connectionString, documentsPath);
@@ -39,6 +73,30 @@ builder.Services.AddOpenVepaServer(builder.Configuration, openvepaHome);
 builder.Services.AddOpenVepaScheduler(builder.Configuration);
 
 var app = builder.Build();
+
+// Log provider configuration state at startup for diagnostics
+using (var scope = app.Services.CreateScope())
+{
+    var providerOptions = scope.ServiceProvider.GetRequiredService<IOptions<ProviderOptions>>().Value;
+    var startupLogger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>()
+        .CreateLogger("OpenVEPA.Startup");
+    startupLogger.LogInformation("Provider config loaded: DefaultProvider={DefaultProvider}, Instances={InstanceCount}",
+        providerOptions.DefaultProvider, providerOptions.Instances?.Count ?? 0);
+    if (providerOptions.Instances is { Count: > 0 })
+    {
+        foreach (var instance in providerOptions.Instances)
+        {
+            startupLogger.LogInformation(
+                "  Provider instance: name={Name}, type={Type}, model={Model}, endpoint={Endpoint}, hasApiKey={HasApiKey}",
+                instance.Name, instance.Type, instance.DefaultModel ?? "(none)",
+                instance.Endpoint ?? "(default)", !string.IsNullOrWhiteSpace(instance.ApiKey));
+        }
+    }
+    else
+    {
+        startupLogger.LogWarning("No provider instances configured. Chat will fail until providers are added.");
+    }
+}
 
 app.Services.GetRequiredService<WebApplicationHolder>().App = app;
 

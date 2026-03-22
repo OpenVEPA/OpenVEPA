@@ -1,6 +1,10 @@
+using System.ClientModel;
+using System.Net.Http;
+using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Logging;
 using OpenVEPA.Core.Agents;
 using OpenVEPA.Core.Sessions;
 using OpenVEPA.Core.Skills;
@@ -121,8 +125,11 @@ internal static class SessionApiExtensions
             SendSessionMessageRequest? request,
             ISessionStore sessionStore,
             IAgentRuntime agentRuntime,
+            ILoggerFactory loggerFactory,
             CancellationToken ct) =>
         {
+            var logger = loggerFactory.CreateLogger(nameof(SessionApiExtensions));
+
             if (string.IsNullOrWhiteSpace(id))
             {
                 return Results.BadRequest(new { error = "Session id is required." });
@@ -133,27 +140,74 @@ internal static class SessionApiExtensions
                 return Results.BadRequest(new { error = "Message is required." });
             }
 
-            var session = await sessionStore.GetSessionAsync(id, ct).ConfigureAwait(false);
-            if (session is null)
+            try
             {
-                return Results.NotFound();
+                var session = await sessionStore.GetSessionAsync(id, ct).ConfigureAwait(false);
+                if (session is null)
+                {
+                    return Results.NotFound();
+                }
+
+                logger.LogDebug("Processing message for session {SessionId}", id);
+
+                var userMessage = CreateMessage(id, MessageRole.User, request.Message, usage: null);
+                await sessionStore.AddMessageAsync(userMessage, ct).ConfigureAwait(false);
+
+                AgentResponse response;
+                try
+                {
+                    response = await agentRuntime.ProcessMessageAsync(id, request.Message, ct)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Failed to process message in session {SessionId}. ExceptionType={ExType}, Message={ExMsg}",
+                        id, ex.GetType().Name, ex.Message);
+
+                    if (ex is ClientResultException cre)
+                    {
+                        logger.LogError(
+                            "LLM provider returned HTTP {Status}. Full response: {FullMessage}",
+                            cre.Status, cre.Message);
+                    }
+
+                    var errorContent = FormatChatError(ex);
+                    var errorMessage = CreateMessage(id, MessageRole.Assistant, errorContent, usage: null);
+
+                    try
+                    {
+                        await sessionStore.AddMessageAsync(errorMessage, ct).ConfigureAwait(false);
+                    }
+                    catch (Exception storeEx)
+                    {
+                        logger.LogError(storeEx,
+                            "Failed to persist error message for session {SessionId}", id);
+                    }
+
+                    return Results.Ok(errorMessage);
+                }
+
+                var assistantMessage = CreateMessage(
+                    id,
+                    MessageRole.Assistant,
+                    response.Content,
+                    response.TotalTokenUsage);
+
+                await sessionStore.AddMessageAsync(assistantMessage, ct).ConfigureAwait(false);
+
+                logger.LogDebug("Message processed successfully for session {SessionId}", id);
+
+                return Results.Ok(assistantMessage);
             }
+            catch (Exception ex)
+            {
+                logger.LogError(ex,
+                    "Unhandled error in chat endpoint for session {SessionId}", id);
 
-            var userMessage = CreateMessage(id, MessageRole.User, request.Message, usage: null);
-            await sessionStore.AddMessageAsync(userMessage, ct).ConfigureAwait(false);
-
-            var response = await agentRuntime.ProcessMessageAsync(id, request.Message, ct)
-                .ConfigureAwait(false);
-
-            var assistantMessage = CreateMessage(
-                id,
-                MessageRole.Assistant,
-                response.Content,
-                response.TotalTokenUsage);
-
-            await sessionStore.AddMessageAsync(assistantMessage, ct).ConfigureAwait(false);
-
-            return Results.Ok(assistantMessage);
+                return Results.Json(
+                    new { error = $"An internal error occurred: {ex.Message}" },
+                    statusCode: StatusCodes.Status500InternalServerError);
+            }
         });
 
         return app;
@@ -177,6 +231,82 @@ internal static class SessionApiExtensions
     private static string? NormalizeTitle(string? title)
     {
         return string.IsNullOrWhiteSpace(title) ? null : title.Trim();
+    }
+
+    private static string FormatChatError(Exception ex)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("⚠️ **Unable to process your message**");
+        sb.AppendLine();
+
+        if (ex is InvalidOperationException ioe)
+        {
+            if (ioe.Message.Contains("IChatClient", StringComparison.OrdinalIgnoreCase)
+                || ioe.Message.Contains("provider", StringComparison.OrdinalIgnoreCase))
+            {
+                sb.AppendLine("**Cause:** No LLM provider is configured or the configured provider could not be found.");
+                sb.AppendLine();
+                sb.AppendLine("**How to fix:**");
+                sb.AppendLine("1. Go to **LLM Settings** in the sidebar and add a provider with a valid API key");
+                sb.AppendLine("2. Then go to **Agents** → select this agent → configure the Provider and Model");
+            }
+            else if (ioe.Message.Contains("API key", StringComparison.OrdinalIgnoreCase))
+            {
+                sb.AppendLine("**Cause:** The LLM provider's API key is missing or invalid.");
+                sb.AppendLine();
+                sb.AppendLine("**How to fix:** Go to **LLM Settings** and update the API key for your provider.");
+            }
+            else
+            {
+                sb.AppendLine($"**Cause:** {ex.Message}");
+            }
+        }
+        else if (ex is ClientResultException cre)
+        {
+            switch (cre.Status)
+            {
+                case 401 or 403:
+                    sb.AppendLine("**Cause:** The LLM provider rejected the API key. Check that the API key is valid and has the correct permissions.");
+                    sb.AppendLine();
+                    sb.AppendLine("**How to fix:** Go to **LLM Settings** and verify the API key for your provider.");
+                    break;
+                case 404:
+                    sb.AppendLine("**Cause:** The LLM provider endpoint or model was not found. This usually means the API endpoint URL is incorrect or the model name is not supported by this provider.");
+                    sb.AppendLine();
+                    sb.AppendLine("**How to fix:**");
+                    sb.AppendLine("1. Go to **LLM Settings** and verify the provider configuration");
+                    sb.AppendLine("2. Run the test-chat diagnostic: `POST /api/system/test-chat`");
+                    sb.AppendLine("3. Check `/api/system/diagnostics` for the resolved endpoint and model");
+                    break;
+                case 429:
+                    sb.AppendLine("**Cause:** Rate limit exceeded. The LLM provider is throttling requests. Wait a moment and try again.");
+                    break;
+                case >= 500:
+                    sb.AppendLine("**Cause:** The LLM provider returned a server error. This is usually temporary — try again in a few moments.");
+                    break;
+                default:
+                    sb.AppendLine($"**Cause:** The LLM provider returned HTTP {cre.Status}.");
+                    break;
+            }
+
+            sb.AppendLine();
+            sb.AppendLine($"**Details:** {cre.Message}");
+        }
+        else if (ex is HttpRequestException)
+        {
+            sb.AppendLine("**Cause:** Could not connect to the LLM provider.");
+            sb.AppendLine();
+            sb.AppendLine("**How to fix:**");
+            sb.AppendLine("- Check that the provider endpoint is reachable");
+            sb.AppendLine("- For Ollama: ensure the Ollama service is running");
+            sb.AppendLine($"- Details: {ex.Message}");
+        }
+        else
+        {
+            sb.AppendLine($"**Error:** {ex.Message}");
+        }
+
+        return sb.ToString();
     }
 }
 

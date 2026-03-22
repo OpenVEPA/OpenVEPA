@@ -1,6 +1,9 @@
 using System.ClientModel;
+using System.ClientModel.Primitives;
 
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 using OpenAI;
 
@@ -22,10 +25,12 @@ public static class OpenAiProvider
     /// </summary>
     /// <param name="options">OpenAI configuration (API key, model, optional endpoint).</param>
     /// <param name="auditLogger">Optional audit callback for token tracking.</param>
+    /// <param name="logger">Optional logger for HTTP request/response diagnostics.</param>
     /// <returns>A token-tracking chat client wrapping the OpenAI client.</returns>
     public static IChatClient Create(
         OpenAiOptions options,
-        Func<LlmAuditLogEntry, Task>? auditLogger = null)
+        Func<LlmAuditLogEntry, Task>? auditLogger = null,
+        ILogger? logger = null)
     {
         if (options is null) throw new ArgumentNullException(nameof(options));
         if (string.IsNullOrWhiteSpace(options.ApiKey))
@@ -36,12 +41,25 @@ public static class OpenAiProvider
         OpenAIClientOptions clientOptions = new();
         if (!string.IsNullOrWhiteSpace(options.Endpoint))
         {
-            clientOptions.Endpoint = new Uri(options.Endpoint);
+            if (!Uri.TryCreate(options.Endpoint, UriKind.Absolute, out var endpointUri))
+            {
+                throw new InvalidOperationException(
+                    $"Invalid endpoint URL '{options.Endpoint}' for OpenAI provider. " +
+                    "The endpoint must be a valid absolute URL (e.g., https://api.openai.com/v1).");
+            }
+
+            clientOptions.Endpoint = endpointUri;
+        }
+
+        if (logger is not null)
+        {
+            var httpClient = new HttpClient(new LoggingHttpHandler(logger) { InnerHandler = new HttpClientHandler() });
+            clientOptions.Transport = new HttpClientPipelineTransport(httpClient);
         }
 
         var openAiClient = new OpenAIClient(credential, clientOptions);
         IChatClient innerClient = openAiClient.GetChatClient(options.Model).AsIChatClient();
 
-        return new TokenTrackingChatClient(innerClient, Key, options.Model, auditLogger);
+        return new TokenTrackingChatClient(innerClient, options.Provider, options.Model, auditLogger);
     }
 }

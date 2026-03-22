@@ -166,7 +166,15 @@ internal static class SetupWizardWebUi
 
             if (!ModelListProxy.ProviderSupportsListing(provider))
             {
-                return Results.BadRequest(new { error = "Provider does not support dynamic model listing." });
+                return Results.Ok(new
+                {
+                    success = false,
+                    models = Array.Empty<string>(),
+                    provider,
+                    endpoint = string.Empty,
+                    error = "Provider does not support dynamic model listing.",
+                    diagnostics = $"The provider '{provider}' does not expose a model list API.",
+                });
             }
 
             var apiKey = context.Request.Query["apiKey"].ToString();
@@ -179,25 +187,18 @@ internal static class SetupWizardWebUi
 
             endpoint = endpoint.TrimEnd('/');
 
-            try
-            {
-                var models = await ModelListProxy.FetchModelsFromProviderAsync(
-                    provider, apiKey, endpoint, context.RequestAborted).ConfigureAwait(false);
+            var result = await ModelListProxy.FetchModelsWithStatusAsync(
+                provider, apiKey, endpoint, context.RequestAborted).ConfigureAwait(false);
 
-                return Results.Ok(new { models });
-            }
-            catch (OperationCanceledException)
+            return Results.Ok(new
             {
-                return Results.StatusCode(StatusCodes.Status502BadGateway);
-            }
-#pragma warning disable CA1031 // Catch general exception to return structured error
-            catch (Exception ex)
-#pragma warning restore CA1031
-            {
-                return Results.Json(
-                    new { error = $"Failed to fetch models: {ex.Message}" },
-                    statusCode: StatusCodes.Status502BadGateway);
-            }
+                success = result.Success,
+                models = result.Models,
+                provider = result.Provider,
+                endpoint = result.Endpoint,
+                error = result.Error,
+                diagnostics = result.Diagnostics,
+            });
         });
     }
 

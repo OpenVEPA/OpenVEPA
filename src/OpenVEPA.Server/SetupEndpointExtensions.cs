@@ -215,6 +215,19 @@ internal static class SetupEndpointExtensions
             "openai", "groq", "together", "perplexity", "azure",
         };
 
+    /// <summary>
+    /// Default endpoints for providers that don't use the generic OpenAI-compatible endpoint.
+    /// Used during setup to persist the correct base URL into the config file.
+    /// </summary>
+    private static readonly Dictionary<string, string> ProviderDefaultEndpoints =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["google"] = "https://generativelanguage.googleapis.com/v1beta",
+            ["anthropic"] = "https://api.anthropic.com",
+            ["mistral"] = "https://api.mistral.ai/v1",
+            ["cohere"] = "https://api.cohere.ai/v1",
+        };
+
     /// <summary>Builds the Providers configuration node using the instance-based format.</summary>
     private static System.Text.Json.Nodes.JsonObject BuildProvidersNode(
         string provider,
@@ -233,7 +246,8 @@ internal static class SetupEndpointExtensions
             ["displayName"] = displayName,
             ["type"] = provider,
             ["endpoint"] = endpoint,
-            ["modelId"] = modelId,
+            ["modelId"] = modelId, // backward compat: keep as "modelId" for setup wizard
+            ["defaultModel"] = modelId,
         };
 
         if (!string.IsNullOrEmpty(apiKey))
@@ -265,6 +279,12 @@ internal static class SetupEndpointExtensions
         if (OpenAiCompatibleProviders.Contains(provider))
         {
             return s.OpenAiEndpoint ?? "https://api.openai.com/v1";
+        }
+
+        // Return provider-specific default endpoint (Google, Anthropic, Mistral, etc.).
+        if (ProviderDefaultEndpoints.TryGetValue(provider, out var defaultEndpoint))
+        {
+            return defaultEndpoint;
         }
 
         return string.Empty;
