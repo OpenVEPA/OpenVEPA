@@ -244,7 +244,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
         },
         google: {
             name:'Google (Gemini)', requiresKey:true,
-            endpoint:'https://generativelanguage.googleapis.com/v1beta', defaultModel:'gemini-2.0-flash',
+            endpoint:'https://generativelanguage.googleapis.com/v1beta', defaultModel:'gemini-2.5-flash',
             canFetch:true,
             desc:'Google Gemini models with multimodal capabilities.'
         },

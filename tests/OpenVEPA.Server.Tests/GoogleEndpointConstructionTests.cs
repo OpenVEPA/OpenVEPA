@@ -1,4 +1,13 @@
+using System.ClientModel;
+using System.ClientModel.Primitives;
+using System.Net;
+using System.Text;
+
 using FluentAssertions;
+
+using Microsoft.Extensions.AI;
+
+using OpenAI;
 
 using OpenVEPA.Providers;
 
@@ -116,6 +125,75 @@ public sealed class GoogleEndpointConstructionTests
         act.Should().NotThrow("an empty endpoint for a generic OpenAI provider must map to null (SDK default)");
     }
 
+    // ── SDK-level URL verification ─────────────────────────────────────
+
+    [Fact]
+    public async Task SdkSendsCorrectUrlForGoogleEndpoint()
+    {
+        // Arrange – mirror the exact setup from CreateGoogleClient / OpenAiProvider.Create
+        var handler = new CapturingHandler();
+        var httpClient = new HttpClient(handler);
+
+        var clientOptions = new OpenAIClientOptions
+        {
+            Endpoint = new Uri("https://generativelanguage.googleapis.com/v1beta/openai"),
+        };
+        clientOptions.Transport = new HttpClientPipelineTransport(httpClient);
+
+        var credential = new ApiKeyCredential("test-key");
+        var openAiClient = new OpenAIClient(credential, clientOptions);
+        var chatClient = openAiClient.GetChatClient("gemini-2.5-flash").AsIChatClient();
+
+        // Act
+        await chatClient.GetResponseAsync("test");
+
+        // Assert
+        handler.CapturedUri.Should().NotBeNull("the handler should have captured the outgoing request");
+        handler.CapturedUri!.GetLeftPart(UriPartial.Path)
+            .Should().Be("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+                "the SDK must append /chat/completions to the configured Google endpoint");
+    }
+
+    /// <summary>
+    /// Intercepts outgoing HTTP requests, captures the URI, and returns a
+    /// minimal valid OpenAI chat-completion response so the SDK is satisfied.
+    /// </summary>
+    private sealed class CapturingHandler : DelegatingHandler
+    {
+        public Uri? CapturedUri { get; private set; }
+
+        public CapturingHandler() : base(new HttpClientHandler()) { }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            CapturedUri = request.RequestUri;
+
+            var response = new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """
+                    {
+                        "id": "test",
+                        "object": "chat.completion",
+                        "created": 1234567890,
+                        "model": "gemini-2.5-flash",
+                        "choices": [{
+                            "index": 0,
+                            "message": {"role": "assistant", "content": "Hello"},
+                            "finish_reason": "stop"
+                        }],
+                        "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6}
+                    }
+                    """,
+                    Encoding.UTF8,
+                    "application/json"),
+            };
+
+            return Task.FromResult(response);
+        }
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────
 
     private static ProviderInstanceOptions MakeGoogle(string? endpoint) => new()
@@ -124,6 +202,6 @@ public sealed class GoogleEndpointConstructionTests
         Type = "google",
         Endpoint = endpoint,
         ApiKey = "test-key",
-        DefaultModel = "gemini-2.0-flash",
+        DefaultModel = "gemini-2.5-flash",
     };
 }

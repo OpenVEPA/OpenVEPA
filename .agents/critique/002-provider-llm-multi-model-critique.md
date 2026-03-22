@@ -108,7 +108,7 @@ The proposal addresses all 4 user requirements:
 
 - [ ] **M2: The `AvailableModels` empty-vs-pinned distinction is implicit.**
 
-  `AvailableModels: []` means "dynamic fetch." `AvailableModels: ["a", "b"]` means "pinned." There is no explicit boolean like `DynamicModelFetch: true`. This works but requires documentation. A user who sets `AvailableModels: ["gemini-2.0-flash"]` might expect dynamic fetch PLUS a filter, not a hard pin.
+  `AvailableModels: []` means "dynamic fetch." `AvailableModels: ["a", "b"]` means "pinned." There is no explicit boolean like `DynamicModelFetch: true`. This works but requires documentation. A user who sets `AvailableModels: ["gemini-2.5-flash"]` might expect dynamic fetch PLUS a filter, not a hard pin.
 
   **Recommendation:** Document clearly in the config file comments and UI tooltip: "Empty list = all models from provider API. Non-empty list = ONLY these models."
 

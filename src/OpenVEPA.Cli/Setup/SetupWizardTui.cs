@@ -24,7 +24,7 @@ internal static class SetupWizardTui
     [
         new("Ollama (Local, free - recommended)", "ollama", "llama3.2", "http://localhost:11434", false),
         new("OpenAI (Cloud, requires API key)", "openai", "gpt-4o", "https://api.openai.com/v1", true),
-        new("Google Gemini (Cloud, requires API key)", "google", "gemini-2.0-flash", "https://generativelanguage.googleapis.com/v1beta", true),
+        new("Google Gemini (Cloud, requires API key)", "google", "gemini-2.5-flash", "https://generativelanguage.googleapis.com/v1beta", true),
         new("Anthropic Claude (Cloud, requires API key)", "anthropic", "claude-sonnet-4-20250514", "https://api.anthropic.com/v1", true),
         new("Mistral AI (Cloud, requires API key)", "mistral", "mistral-large-latest", "https://api.mistral.ai/v1", true),
         new("Groq (Cloud, requires API key)", "groq", "llama-3.3-70b-versatile", "https://api.groq.com/openai/v1", true),

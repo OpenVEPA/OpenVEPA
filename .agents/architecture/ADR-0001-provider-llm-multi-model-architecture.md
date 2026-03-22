@@ -12,7 +12,7 @@ informed: [implementer-agent, qa-agent]
 
 The current OpenVEPA provider model binds one model per provider instance (`ModelId` field on `ProviderInstanceOptions`). This creates three problems:
 
-1. A single Google Gemini subscription grants access to gemini-2.0-flash, gemini-1.5-pro, gemini-2.5-flash, etc. Today you must create a separate "instance" for each model with duplicated credentials.
+1. A single Google Gemini subscription grants access to gemini-2.5-flash, gemini-1.5-pro, gemini-2.5-flash, etc. Today you must create a separate "instance" for each model with duplicated credentials.
 2. Agents reference providers by type name (`"google"`) which is ambiguous when two Google subscriptions exist with different API keys.
 3. The factory resolves instances by matching `Name` OR `Type`, creating non-deterministic behavior with multiple same-type instances.
 
@@ -105,7 +105,7 @@ The following sections specify the exact changes to config structure, C# types, 
         "Type": "google",
         "Endpoint": "https://generativelanguage.googleapis.com/v1beta",
         "ApiKey": "AIza...",
-        "DefaultModel": "gemini-2.0-flash",
+        "DefaultModel": "gemini-2.5-flash",
         "AvailableModels": []
       },
       {
@@ -246,7 +246,7 @@ public sealed record AgentLlmConfig(
     string? Provider = null,
 
     /// <summary>
-    /// Specific model from the provider instance (e.g., "gemini-2.0-flash").
+    /// Specific model from the provider instance (e.g., "gemini-2.5-flash").
     /// Must be in the instance's AvailableModels or dynamically available.
     /// Null = use the instance's DefaultModel.
     /// </summary>
@@ -446,7 +446,7 @@ No structural change needed. `AgentLlmConfig` already has `Provider` and `Model`
 | +--- google-main -------------------+ [DEFAULT] [Edit]  |
 | | Google AI (Primary)               |           [Remove] |
 | | Type: google                      |                    |
-| | Default Model: gemini-2.0-flash   |                    |
+| | Default Model: gemini-2.5-flash   |                    |
 | | Models: (dynamic - 12 available)  |                    |
 | +-----------------------------------+                    |
 |                                                          |
@@ -514,7 +514,7 @@ Group by provider instance, then by model:
 | LLM Usage (Last 30 days)                                 |
 +----------------------------------------------------------+
 | google-main                           Total: $12.47      |
-|   gemini-2.0-flash    4,231 calls    $3.21              |
+|   gemini-2.5-flash    4,231 calls    $3.21              |
 |   gemini-2.5-flash    1,892 calls    $9.26              |
 |                                                          |
 | openai-prod                           Total: $8.93      |
@@ -611,7 +611,7 @@ The PUT endpoint accepts both `ModelId` and `DefaultModel` in `ProviderConfigInp
 ```mermaid
 graph TD
     subgraph Config["openvepa.conf"]
-        PI1["Instance: google-main<br/>DefaultModel: gemini-2.0-flash<br/>AvailableModels: dynamic"]
+        PI1["Instance: google-main<br/>DefaultModel: gemini-2.5-flash<br/>AvailableModels: dynamic"]
         PI2["Instance: openai-prod<br/>DefaultModel: gpt-4o<br/>AvailableModels: gpt-4o, gpt-4o-mini"]
         PI3["Instance: ollama-local<br/>DefaultModel: llama3.2"]
     end

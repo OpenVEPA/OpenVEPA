@@ -4350,7 +4350,10 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
             } else {
                 var detail = 'HTTP ' + (result.httpStatus||'?') + ': ' + (result.error||'Unknown error');
                 if(result.hint) detail += ' \u2014 ' + result.hint;
-                state.providerTestStatus[testKey] = {type:'error', success:false, error:detail, diagnostics:'Provider: ' + (result.provider||'?') + ', Model: ' + (result.model||'?') + ', Endpoint: ' + (result.endpoint||'?')};
+                if(result.availableModels && result.availableModels.length > 0){
+                    detail += ' Available models: ' + result.availableModels.slice(0, 10).join(', ');
+                }
+                state.providerTestStatus[testKey] = {type:'error', success:false, error:detail, diagnostics:'Provider: ' + (result.provider||'?') + ', Model: ' + (result.model||'?') + ', Endpoint: ' + (result.endpoint||'?') + ', Resolved: ' + (result.resolvedEndpoint||'?') + ', Type: ' + (result.instanceType||'?')};
             }
         }).catch(function(error){
             state.providerTestStatus[testKey] = {type:'error', success:false, error:error.message, diagnostics:'Request failed'};

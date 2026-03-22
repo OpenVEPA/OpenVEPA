@@ -80,7 +80,7 @@ public sealed class GoogleEndpointLiveTests : IDisposable
     {
         var body = JsonSerializer.Serialize(new
         {
-            model = "gemini-2.0-flash",
+            model = "gemini-2.5-flash",
             messages = new[] { new { role = "user", content = "ping" } },
         });
 

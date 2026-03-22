@@ -17,6 +17,7 @@ using Microsoft.Extensions.Options;
 using OpenVEPA.Agents.Runtime;
 using OpenVEPA.Core.Sessions;
 using OpenVEPA.Providers;
+using OpenVEPA.Server;
 using OpenVEPA.Storage;
 using OpenVEPA.Storage.Entities;
 
@@ -540,6 +541,12 @@ internal static class SystemApiExtensions
             var effectiveModel = instance.DefaultModel;
 #pragma warning restore CS0618
 
+            var isGoogle = string.Equals(instance.Type, "google", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(instance.Type, "gemini", StringComparison.OrdinalIgnoreCase);
+            var resolvedEndpoint = isGoogle && !string.IsNullOrWhiteSpace(instance.Endpoint)
+                ? instance.Endpoint.TrimEnd('/') + "/openai"
+                : instance.Endpoint;
+
             testLogger.LogInformation(
                 "Test-chat: provider={Provider}, type={Type}, model={Model}, endpoint={Endpoint}",
                 instance.Name, instance.Type, effectiveModel ?? "(null)", instance.Endpoint ?? "(null)");
@@ -561,8 +568,10 @@ internal static class SystemApiExtensions
                     success = true,
                     provider = instance.Name,
                     type = instance.Type,
+                    instanceType = instance.Type,
                     model = effectiveModel,
                     endpoint = instance.Endpoint,
+                    resolvedEndpoint,
                     responsePreview = response.Text?.Length > 200 ? response.Text[..200] + "..." : response.Text,
                     inputTokens = response.Usage?.InputTokenCount,
                     outputTokens = response.Usage?.OutputTokenCount,
@@ -572,13 +581,31 @@ internal static class SystemApiExtensions
             {
                 testLogger.LogError(cre, "Test-chat failed with status {Status}", cre.Status);
 
+                List<string>? availableModels = null;
+                if (cre.Status == 404)
+                {
+                    try
+                    {
+                        var providerType = instance.Type?.ToLowerInvariant() ?? "";
+                        var endpoint = instance.Endpoint ?? ModelListProxy.DefaultEndpoints.GetValueOrDefault(providerType, "");
+                        availableModels = await ModelListProxy.FetchModelsFromProviderAsync(
+                            providerType, instance.ApiKey ?? "", endpoint, ct).ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                        // Model list fetch is best-effort; don't fail the diagnostic response.
+                    }
+                }
+
                 return Results.Ok(new
                 {
                     success = false,
                     provider = instance.Name,
                     type = instance.Type,
+                    instanceType = instance.Type,
                     model = effectiveModel,
                     endpoint = instance.Endpoint,
+                    resolvedEndpoint,
                     httpStatus = cre.Status,
                     error = cre.Message,
                     hint = cre.Status switch
@@ -588,6 +615,7 @@ internal static class SystemApiExtensions
                         429 => "Rate limited. Wait and try again.",
                         _ => $"HTTP {cre.Status} from the LLM provider.",
                     },
+                    availableModels,
                 });
             }
             catch (Exception ex)
@@ -599,8 +627,10 @@ internal static class SystemApiExtensions
                     success = false,
                     provider = instance.Name,
                     type = instance.Type,
+                    instanceType = instance.Type,
                     model = effectiveModel,
                     endpoint = instance.Endpoint,
+                    resolvedEndpoint,
                     error = ex.Message,
                     exceptionType = ex.GetType().Name,
                 });

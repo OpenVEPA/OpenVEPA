@@ -264,14 +264,14 @@ public sealed class SetupConfigurationTests
         var config = new SetupConfiguration
         {
             Provider = "google",
-            ModelId = "gemini-2.0-flash",
+            ModelId = "gemini-2.5-flash",
             HomePath = "/home/user/.openvepa",
             ApiKey = "AIza-test-key",
             Endpoint = "https://generativelanguage.googleapis.com/v1",
         };
 
         config.Provider.Should().Be("google");
-        config.ModelId.Should().Be("gemini-2.0-flash");
+        config.ModelId.Should().Be("gemini-2.5-flash");
         config.ApiKey.Should().Be("AIza-test-key");
         config.Endpoint.Should().Be("https://generativelanguage.googleapis.com/v1");
     }

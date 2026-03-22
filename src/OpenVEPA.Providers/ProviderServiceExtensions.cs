@@ -210,12 +210,12 @@ public static class ProviderServiceExtensions
             : endpoint + "/openai";
 
         logger?.LogInformation("Creating Google (OpenAI-compat) client: endpoint={Endpoint}, model={Model}",
-            openAiCompatEndpoint, effectiveModel ?? "gemini-2.0-flash");
+            openAiCompatEndpoint, effectiveModel ?? "gemini-2.5-flash");
 
         return OpenAiProvider.Create(new OpenAiOptions
         {
             ApiKey = instance.ApiKey,
-            Model = effectiveModel ?? "gemini-2.0-flash",
+            Model = effectiveModel ?? "gemini-2.5-flash",
             Endpoint = openAiCompatEndpoint,
             Provider = "google",
         }, auditLogger, logger);

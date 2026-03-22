@@ -271,7 +271,7 @@ public sealed class SetupConfigurationWriterTests : IDisposable
         google.Should().NotBeNull();
         google?["ApiKey"]?.GetValue<string>().Should().Be("AIza-test-key");
         google?["Endpoint"]?.GetValue<string>().Should().Be("https://generativelanguage.googleapis.com/v1");
-        google?["ModelId"]?.GetValue<string>().Should().Be("gemini-2.0-flash");
+        google?["ModelId"]?.GetValue<string>().Should().Be("gemini-2.5-flash");
     }
 
     [Fact]
@@ -588,7 +588,7 @@ public sealed class SetupConfigurationWriterTests : IDisposable
     private static SetupConfiguration CreateGoogleConfig(string homePath) => new()
     {
         Provider = "google",
-        ModelId = "gemini-2.0-flash",
+        ModelId = "gemini-2.5-flash",
         HomePath = homePath,
         ApiKey = "AIza-test-key",
         Endpoint = "https://generativelanguage.googleapis.com/v1",
