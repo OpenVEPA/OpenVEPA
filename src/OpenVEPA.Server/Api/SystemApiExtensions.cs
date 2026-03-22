@@ -543,13 +543,26 @@ internal static class SystemApiExtensions
 
             var isGoogle = string.Equals(instance.Type, "google", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(instance.Type, "gemini", StringComparison.OrdinalIgnoreCase);
-            var resolvedEndpoint = isGoogle && !string.IsNullOrWhiteSpace(instance.Endpoint)
-                ? instance.Endpoint.TrimEnd('/') + "/openai"
-                : instance.Endpoint;
+            string? resolvedEndpoint;
+            if (isGoogle)
+            {
+                var baseEp = (instance.Endpoint ?? "").TrimEnd('/');
+                if (baseEp.EndsWith("/openai", StringComparison.OrdinalIgnoreCase))
+                    baseEp = baseEp[..^"/openai".Length];
+                resolvedEndpoint = baseEp + "/openai/";
+            }
+            else
+            {
+                resolvedEndpoint = instance.Endpoint;
+            }
 
             testLogger.LogInformation(
                 "Test-chat: provider={Provider}, type={Type}, model={Model}, endpoint={Endpoint}",
                 instance.Name, instance.Type, effectiveModel ?? "(null)", instance.Endpoint ?? "(null)");
+
+            // Direct HTTP diagnostic variables — populated on error for Google providers.
+            string? directTestUrl = null;
+            string? directTestResult = null;
 
             try
             {
@@ -597,6 +610,9 @@ internal static class SystemApiExtensions
                     }
                 }
 
+                // Direct HTTP diagnostic for Google — compare SDK vs raw HTTP
+                (directTestUrl, directTestResult) = await RunDirectHttpTestAsync(instance, effectiveModel, ct);
+
                 return Results.Ok(new
                 {
                     success = false,
@@ -616,11 +632,16 @@ internal static class SystemApiExtensions
                         _ => $"HTTP {cre.Status} from the LLM provider.",
                     },
                     availableModels,
+                    directTestUrl,
+                    directTestResult,
                 });
             }
             catch (Exception ex)
             {
                 testLogger.LogError(ex, "Test-chat failed");
+
+                // Direct HTTP diagnostic for Google — compare SDK vs raw HTTP
+                (directTestUrl, directTestResult) = await RunDirectHttpTestAsync(instance, effectiveModel, ct);
 
                 return Results.Ok(new
                 {
@@ -633,11 +654,62 @@ internal static class SystemApiExtensions
                     resolvedEndpoint,
                     error = ex.Message,
                     exceptionType = ex.GetType().Name,
+                    directTestUrl,
+                    directTestResult,
                 });
             }
         }).RequireAuthorization();
 
         return app;
+    }
+
+    /// <summary>
+    /// Runs a direct HTTP POST to the Google OpenAI-compatible chat/completions endpoint,
+    /// bypassing the SDK, so the dashboard can compare results and diagnose 404s.
+    /// Returns (url, result) — both null for non-Google providers.
+    /// </summary>
+    private static async Task<(string? Url, string? Result)> RunDirectHttpTestAsync(
+        ProviderInstanceOptions instance, string? effectiveModel, CancellationToken ct)
+    {
+        string? directTestUrl = null;
+        string? directTestResult = null;
+        try
+        {
+            var type = instance.Type?.ToLowerInvariant();
+            if (type is "google" or "gemini")
+            {
+                var baseEndpoint = string.IsNullOrWhiteSpace(instance.Endpoint)
+                    ? "https://generativelanguage.googleapis.com/v1beta"
+                    : instance.Endpoint.TrimEnd('/');
+                if (baseEndpoint.EndsWith("/openai", StringComparison.OrdinalIgnoreCase))
+                    baseEndpoint = baseEndpoint[..^"/openai".Length];
+
+                directTestUrl = baseEndpoint + "/openai/chat/completions";
+
+                using var httpClient = new HttpClient();
+                httpClient.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", instance.ApiKey);
+
+                var requestBody = JsonSerializer.Serialize(new
+                {
+                    model = effectiveModel ?? "gemini-2.5-flash",
+                    messages = new[] { new { role = "user", content = "Say hello in one word." } },
+                    max_tokens = 10,
+                });
+
+                var content = new StringContent(requestBody, System.Text.Encoding.UTF8, "application/json");
+                var directResponse = await httpClient.PostAsync(directTestUrl, content, ct).ConfigureAwait(false);
+                var directBody = await directResponse.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+
+                directTestResult = $"HTTP {(int)directResponse.StatusCode}: {directBody[..Math.Min(directBody.Length, 500)]}";
+            }
+        }
+        catch (Exception ex)
+        {
+            directTestResult = $"Direct test failed: {ex.Message}";
+        }
+
+        return (directTestUrl, directTestResult);
     }
 
     private static async Task<LlmMultiProviderResponse> ReadUserLlmConfigAsync(

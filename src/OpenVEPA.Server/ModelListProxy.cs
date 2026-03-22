@@ -22,7 +22,7 @@ internal static class ModelListProxy
             ["perplexity"] = "https://api.perplexity.ai",
             ["anthropic"] = "https://api.anthropic.com/v1",
             ["azure"] = "",
-            ["cohere"] = "https://api.cohere.ai/v1",
+            ["cohere"] = "https://api.cohere.com/v2",
         };
 
     private static readonly HashSet<string> ListableProviders = InitListableProviders();

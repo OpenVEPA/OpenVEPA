@@ -145,7 +145,7 @@ public static class ProviderServiceExtensions
             return OllamaProvider.Create(new OllamaOptions
             {
                 Endpoint = string.IsNullOrWhiteSpace(instance.Endpoint) ? "http://localhost:11434" : instance.Endpoint,
-                Model = effectiveModel ?? "llama3",
+                Model = effectiveModel ?? "llama3.2",
             }, auditLogger);
         }
 
@@ -205,9 +205,11 @@ public static class ProviderServiceExtensions
             ? GoogleDefaultEndpoint
             : instance.Endpoint.TrimEnd('/');
 
-        var openAiCompatEndpoint = endpoint.EndsWith("/openai", StringComparison.OrdinalIgnoreCase)
-            ? endpoint
-            : endpoint + "/openai";
+        // Strip any trailing /openai, then re-add /openai/ with trailing slash per Google docs
+        var baseForGoogle = endpoint.EndsWith("/openai", StringComparison.OrdinalIgnoreCase)
+            ? endpoint[..^"/openai".Length]
+            : endpoint;
+        var openAiCompatEndpoint = baseForGoogle + "/openai/";
 
         logger?.LogInformation("Creating Google (OpenAI-compat) client: endpoint={Endpoint}, model={Model}",
             openAiCompatEndpoint, effectiveModel ?? "gemini-2.5-flash");

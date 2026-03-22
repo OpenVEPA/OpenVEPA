@@ -3266,11 +3266,11 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
         ollama:     {cloud:false, defaultEndpoint:'http://localhost:11434'},
         openai:     {cloud:true,  defaultEndpoint:'https://api.openai.com/v1'},
         google:     {cloud:true,  defaultEndpoint:'https://generativelanguage.googleapis.com/v1beta'},
-        anthropic:  {cloud:true,  defaultEndpoint:'https://api.anthropic.com'},
+        anthropic:  {cloud:true,  defaultEndpoint:'https://api.anthropic.com/v1'},
         mistral:    {cloud:true,  defaultEndpoint:'https://api.mistral.ai/v1'},
         groq:       {cloud:true,  defaultEndpoint:'https://api.groq.com/openai/v1'},
         azure:      {cloud:true,  defaultEndpoint:''},
-        cohere:     {cloud:true,  defaultEndpoint:'https://api.cohere.ai/v1'},
+        cohere:     {cloud:true,  defaultEndpoint:'https://api.cohere.com/v2'},
         together:   {cloud:true,  defaultEndpoint:'https://api.together.xyz/v1'},
         perplexity: {cloud:true,  defaultEndpoint:'https://api.perplexity.ai'}
     };
@@ -4353,7 +4353,14 @@ ${renderEmptyState('Unable to load sessions', 'Review the error above, then try 
                 if(result.availableModels && result.availableModels.length > 0){
                     detail += ' Available models: ' + result.availableModels.slice(0, 10).join(', ');
                 }
-                state.providerTestStatus[testKey] = {type:'error', success:false, error:detail, diagnostics:'Provider: ' + (result.provider||'?') + ', Model: ' + (result.model||'?') + ', Endpoint: ' + (result.endpoint||'?') + ', Resolved: ' + (result.resolvedEndpoint||'?') + ', Type: ' + (result.instanceType||'?')};
+                if(result.directTestResult){
+                    detail += ' | Direct HTTP: ' + result.directTestResult.substring(0, 200);
+                }
+                var diag = 'Provider: ' + (result.provider||'?') + ', Model: ' + (result.model||'?') + ', Endpoint: ' + (result.endpoint||'?') + ', Resolved: ' + (result.resolvedEndpoint||'?') + ', Type: ' + (result.instanceType||'?');
+                if(result.directTestUrl){
+                    diag += ', DirectURL: ' + result.directTestUrl;
+                }
+                state.providerTestStatus[testKey] = {type:'error', success:false, error:detail, diagnostics:diag};
             }
         }).catch(function(error){
             state.providerTestStatus[testKey] = {type:'error', success:false, error:error.message, diagnostics:'Request failed'};

@@ -223,9 +223,9 @@ internal static class SetupEndpointExtensions
         new(StringComparer.OrdinalIgnoreCase)
         {
             ["google"] = "https://generativelanguage.googleapis.com/v1beta",
-            ["anthropic"] = "https://api.anthropic.com",
+            ["anthropic"] = "https://api.anthropic.com/v1",
             ["mistral"] = "https://api.mistral.ai/v1",
-            ["cohere"] = "https://api.cohere.ai/v1",
+            ["cohere"] = "https://api.cohere.com/v2",
         };
 
     /// <summary>Builds the Providers configuration node using the instance-based format.</summary>
