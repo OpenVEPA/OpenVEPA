@@ -93,7 +93,7 @@ public static class ProviderServiceExtensions
             }
 
             var auditLogger = ResolveAuditLogger(sp);
-            var logger = sp.GetService<ILoggerFactory>()?.CreateLogger("OpenVEPA.Providers.OpenAiProvider");
+            var logger = sp.GetService<ILoggerFactory>()?.CreateLogger("OpenVEPA.Providers.GeminiProvider");
             return CreateGoogleClient(instance, model: null, auditLogger, logger);
         });
     }
@@ -181,11 +181,6 @@ public static class ProviderServiceExtensions
         }, auditLogger, logger);
     }
 
-    /// <summary>
-    /// Creates a chat client for Google Gemini using its OpenAI-compatible endpoint.
-    /// Google exposes an OpenAI-compatible API at <c>{base}/openai/</c>, so we append
-    /// the <c>/openai</c> path segment when it is not already present.
-    /// </summary>
     /// <summary>Default base endpoint for the Google Generative Language API.</summary>
     internal const string GoogleDefaultEndpoint = "https://generativelanguage.googleapis.com/v1beta";
 
@@ -195,32 +190,25 @@ public static class ProviderServiceExtensions
         Func<LlmAuditLogEntry, Task>? auditLogger,
         ILogger? logger = null)
     {
-#pragma warning disable CS0618 // Obsolete ModelId -> DefaultModel compat
-        var effectiveModel = model ?? instance.DefaultModel;
+#pragma warning disable CS0618
+        var effectiveModel = model ?? instance.DefaultModel ?? "gemini-2.5-flash";
 #pragma warning restore CS0618
 
-        // Use default endpoint when the stored value is null or empty
-        // (config may store "" which is not null but is still unusable).
-        var endpoint = string.IsNullOrWhiteSpace(instance.Endpoint)
-            ? GoogleDefaultEndpoint
-            : instance.Endpoint.TrimEnd('/');
-
-        // Strip any trailing /openai, then re-add /openai/ with trailing slash per Google docs
-        var baseForGoogle = endpoint.EndsWith("/openai", StringComparison.OrdinalIgnoreCase)
-            ? endpoint[..^"/openai".Length]
-            : endpoint;
-        var openAiCompatEndpoint = baseForGoogle + "/openai/";
-
-        logger?.LogInformation("Creating Google (OpenAI-compat) client: endpoint={Endpoint}, model={Model}",
-            openAiCompatEndpoint, effectiveModel ?? "gemini-2.5-flash");
-
-        return OpenAiProvider.Create(new OpenAiOptions
+        if (string.IsNullOrWhiteSpace(instance.ApiKey))
         {
-            ApiKey = instance.ApiKey,
-            Model = effectiveModel ?? "gemini-2.5-flash",
-            Endpoint = openAiCompatEndpoint,
-            Provider = "google",
-        }, auditLogger, logger);
+            logger?.LogError("API key is missing for Google provider '{InstanceName}'", instance.Name);
+            throw new InvalidOperationException(
+                $"API key is missing for Google provider '{instance.Name}'. " +
+                "Please configure the API key in Settings → LLM Providers.");
+        }
+
+        IChatClient innerClient = GeminiProvider.Create(
+            instance.ApiKey,
+            effectiveModel,
+            instance.Endpoint,
+            logger);
+
+        return new TokenTrackingChatClient(innerClient, "google", effectiveModel, auditLogger);
     }
 
     private static Func<LlmAuditLogEntry, Task>? ResolveAuditLogger(IServiceProvider sp)

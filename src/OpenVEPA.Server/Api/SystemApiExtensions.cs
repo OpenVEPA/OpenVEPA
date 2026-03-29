@@ -546,10 +546,15 @@ internal static class SystemApiExtensions
             string? resolvedEndpoint;
             if (isGoogle)
             {
-                var baseEp = (instance.Endpoint ?? "").TrimEnd('/');
+                var baseEp = string.IsNullOrWhiteSpace(instance.Endpoint)
+                    ? "https://generativelanguage.googleapis.com/v1beta"
+                    : instance.Endpoint.TrimEnd('/');
+                // Strip legacy /openai suffix
                 if (baseEp.EndsWith("/openai", StringComparison.OrdinalIgnoreCase))
                     baseEp = baseEp[..^"/openai".Length];
-                resolvedEndpoint = baseEp + "/openai/";
+                if (baseEp.EndsWith("/openai/", StringComparison.OrdinalIgnoreCase))
+                    baseEp = baseEp[..^"/openai/".Length];
+                resolvedEndpoint = $"{baseEp}/models/{effectiveModel}:generateContent?key=***";
             }
             else
             {
@@ -683,23 +688,29 @@ internal static class SystemApiExtensions
                     : instance.Endpoint.TrimEnd('/');
                 if (baseEndpoint.EndsWith("/openai", StringComparison.OrdinalIgnoreCase))
                     baseEndpoint = baseEndpoint[..^"/openai".Length];
+                if (baseEndpoint.EndsWith("/openai/", StringComparison.OrdinalIgnoreCase))
+                    baseEndpoint = baseEndpoint[..^"/openai/".Length];
 
-                directTestUrl = baseEndpoint + "/openai/chat/completions";
+                var model = effectiveModel ?? "gemini-2.5-flash";
+                directTestUrl = $"{baseEndpoint}/models/{model}:generateContent?key=***";
 
                 using var httpClient = new HttpClient();
-                httpClient.DefaultRequestHeaders.Authorization =
-                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", instance.ApiKey);
-
-                var requestBody = JsonSerializer.Serialize(new
+                // Google native API uses ?key= query param, NOT Bearer token
+                var requestBody = System.Text.Json.JsonSerializer.Serialize(new
                 {
-                    model = effectiveModel ?? "gemini-2.5-flash",
-                    messages = new[] { new { role = "user", content = "Say hello in one word." } },
-                    max_tokens = 10,
+                    contents = new[] {
+                        new {
+                            parts = new[] {
+                                new { text = "Say hello in one word." }
+                            }
+                        }
+                    }
                 });
 
+                var actualUrl = $"{baseEndpoint}/models/{model}:generateContent?key={instance.ApiKey}";
                 var content = new StringContent(requestBody, System.Text.Encoding.UTF8, "application/json");
-                var directResponse = await httpClient.PostAsync(directTestUrl, content, ct).ConfigureAwait(false);
-                var directBody = await directResponse.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                var directResponse = await httpClient.PostAsync(actualUrl, content, ct);
+                var directBody = await directResponse.Content.ReadAsStringAsync(ct);
 
                 directTestResult = $"HTTP {(int)directResponse.StatusCode}: {directBody[..Math.Min(directBody.Length, 500)]}";
             }

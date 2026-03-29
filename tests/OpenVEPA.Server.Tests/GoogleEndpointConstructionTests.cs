@@ -1,13 +1,6 @@
-using System.ClientModel;
-using System.ClientModel.Primitives;
-using System.Net;
-using System.Text;
-
 using FluentAssertions;
 
 using Microsoft.Extensions.AI;
-
-using OpenAI;
 
 using OpenVEPA.Providers;
 
@@ -15,9 +8,9 @@ namespace OpenVEPA.Server.Tests;
 
 /// <summary>
 /// Proves that Google Gemini endpoint construction handles null, empty,
-/// whitespace, valid, and already-suffixed endpoint values correctly.
-/// Exercises the internal <see cref="ProviderServiceExtensions.CreateFromInstance"/>
-/// and <see cref="OpenAiProvider.Create"/> code paths.
+/// whitespace, valid, and legacy /openai-suffixed endpoint values correctly.
+/// Exercises <see cref="GeminiProvider.Create"/> and
+/// <see cref="ProviderServiceExtensions.CreateFromInstance"/> code paths.
 /// </summary>
 public sealed class GoogleEndpointConstructionTests
 {
@@ -64,13 +57,17 @@ public sealed class GoogleEndpointConstructionTests
     }
 
     [Fact]
-    public void Google_EndpointAlreadyContainsOpenAi_NoDoubleAppend()
+    public void Google_EndpointWithOpenAiSuffix_StripsItForNativeApi()
     {
         var instance = MakeGoogle(endpoint: "https://generativelanguage.googleapis.com/v1beta/openai");
 
-        var act = () => ProviderServiceExtensions.CreateFromInstance(instance, model: null, auditLogger: null);
+        var client = ProviderServiceExtensions.CreateFromInstance(instance, model: null, auditLogger: null);
 
-        act.Should().NotThrow("an endpoint already ending in /openai must not get /openai appended again");
+        // The legacy /openai suffix must be stripped for the native Gemini REST API.
+        var inner = GetInnerGeminiMetadata(client);
+        inner.Should().NotBeNull();
+        inner!.ProviderUri!.ToString().Should().NotContain("/openai",
+            "the native Gemini provider must strip the legacy /openai suffix");
     }
 
     // ── OpenAiProvider.Create edge cases ───────────────────────────────
@@ -125,73 +122,80 @@ public sealed class GoogleEndpointConstructionTests
         act.Should().NotThrow("an empty endpoint for a generic OpenAI provider must map to null (SDK default)");
     }
 
-    // ── SDK-level URL verification ─────────────────────────────────────
+    // ── GeminiProvider.Create metadata verification ────────────────────
 
     [Fact]
-    public async Task SdkSendsCorrectUrlForGoogleEndpoint()
+    public void GeminiProviderStripsOpenAiSuffix()
     {
-        // Arrange – mirror the exact setup from CreateGoogleClient / OpenAiProvider.Create
-        var handler = new CapturingHandler();
-        var httpClient = new HttpClient(handler);
+        var client = GeminiProvider.Create(
+            "test-key", "gemini-2.5-flash",
+            "https://generativelanguage.googleapis.com/v1beta/openai");
 
-        var clientOptions = new OpenAIClientOptions
-        {
-            Endpoint = new Uri("https://generativelanguage.googleapis.com/v1beta/openai"),
-        };
-        clientOptions.Transport = new HttpClientPipelineTransport(httpClient);
+        var metadata = client.GetService<ChatClientMetadata>();
 
-        var credential = new ApiKeyCredential("test-key");
-        var openAiClient = new OpenAIClient(credential, clientOptions);
-        var chatClient = openAiClient.GetChatClient("gemini-2.5-flash").AsIChatClient();
-
-        // Act
-        await chatClient.GetResponseAsync("test");
-
-        // Assert
-        handler.CapturedUri.Should().NotBeNull("the handler should have captured the outgoing request");
-        handler.CapturedUri!.GetLeftPart(UriPartial.Path)
-            .Should().Be("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-                "the SDK must append /chat/completions to the configured Google endpoint");
+        metadata.Should().NotBeNull();
+        metadata!.ProviderName.Should().Be("google-gemini");
+        metadata!.ProviderUri!.ToString().Should().NotContain("/openai",
+            "the legacy /openai suffix must be stripped for native REST API");
+        metadata!.ProviderUri!.ToString().Should().Contain("generativelanguage.googleapis.com/v1beta");
     }
 
-    /// <summary>
-    /// Intercepts outgoing HTTP requests, captures the URI, and returns a
-    /// minimal valid OpenAI chat-completion response so the SDK is satisfied.
-    /// </summary>
-    private sealed class CapturingHandler : DelegatingHandler
+    [Fact]
+    public void GeminiProviderUsesDefaultEndpoint()
     {
-        public Uri? CapturedUri { get; private set; }
+        var client = GeminiProvider.Create("test-key", "gemini-2.5-flash");
 
-        public CapturingHandler() : base(new HttpClientHandler()) { }
+        var metadata = client.GetService<ChatClientMetadata>();
 
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            CapturedUri = request.RequestUri;
+        metadata.Should().NotBeNull();
+        metadata!.ProviderUri.Should().NotBeNull();
+        metadata!.ProviderUri!.ToString().Should().Contain("generativelanguage.googleapis.com");
+    }
 
-            var response = new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(
-                    """
-                    {
-                        "id": "test",
-                        "object": "chat.completion",
-                        "created": 1234567890,
-                        "model": "gemini-2.5-flash",
-                        "choices": [{
-                            "index": 0,
-                            "message": {"role": "assistant", "content": "Hello"},
-                            "finish_reason": "stop"
-                        }],
-                        "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6}
-                    }
-                    """,
-                    Encoding.UTF8,
-                    "application/json"),
-            };
+    [Fact]
+    public void GeminiProviderHandlesTrailingSlash()
+    {
+        var client = GeminiProvider.Create(
+            "test-key", "gemini-2.5-flash",
+            "https://generativelanguage.googleapis.com/v1beta/");
 
-            return Task.FromResult(response);
-        }
+        var metadata = client.GetService<ChatClientMetadata>();
+
+        metadata!.ProviderUri!.ToString().Should().NotEndWith("//");
+    }
+
+    [Fact]
+    public void GeminiProviderThrowsOnMissingApiKey()
+    {
+        var act = () => GeminiProvider.Create("", "gemini-2.5-flash");
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*API key*");
+    }
+
+    [Fact]
+    public void GeminiProviderStripsOpenAiSuffixWithTrailingSlash()
+    {
+        var client = GeminiProvider.Create(
+            "test-key", "gemini-2.5-flash",
+            "https://generativelanguage.googleapis.com/v1beta/openai/");
+
+        var metadata = client.GetService<ChatClientMetadata>();
+
+        metadata!.ProviderUri!.ToString().Should().NotContain("/openai",
+            "the legacy /openai/ suffix (with trailing slash) must also be stripped");
+    }
+
+    [Fact]
+    public void GeminiProviderPreservesCustomEndpoint()
+    {
+        var client = GeminiProvider.Create(
+            "test-key", "gemini-2.5-flash",
+            "https://custom-google.example.com/v1beta");
+
+        var metadata = client.GetService<ChatClientMetadata>();
+
+        metadata!.ProviderUri!.ToString().Should().Contain("custom-google.example.com");
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────
@@ -204,4 +208,15 @@ public sealed class GoogleEndpointConstructionTests
         ApiKey = "test-key",
         DefaultModel = "gemini-2.5-flash",
     };
+
+    /// <summary>
+    /// Extracts <see cref="ChatClientMetadata"/> from the inner GeminiProvider,
+    /// unwrapping the TokenTrackingChatClient wrapper that CreateFromInstance adds.
+    /// </summary>
+    private static ChatClientMetadata? GetInnerGeminiMetadata(IChatClient client)
+    {
+        // CreateFromInstance wraps GeminiProvider in TokenTrackingChatClient.
+        // Try getting metadata from the inner client via GetService.
+        return client.GetService<ChatClientMetadata>();
+    }
 }

@@ -6,7 +6,7 @@ using FluentAssertions;
 namespace OpenVEPA.Server.Tests;
 
 /// <summary>
-/// Verifies that the Google Gemini OpenAI-compatible endpoint URLs we construct
+/// Verifies that the Google Gemini native REST API endpoint URLs we construct
 /// actually exist by making real HTTP requests with dummy credentials.
 ///
 /// Key insight: a correct URL returns 400/401/403 (bad credentials) while
@@ -30,39 +30,32 @@ public sealed class GoogleEndpointLiveTests : IDisposable
     }
 
     [Fact]
-    public async Task ChatCompletionsEndpoint_WithDummyBearer_ReturnsNon404()
+    public async Task NativeGenerateContentEndpoint_WithDummyKey_ReturnsNon404()
     {
-        // This is the EXACT URL the openai-dotnet SDK constructs:
-        //   base = "https://generativelanguage.googleapis.com/v1beta/openai"
-        //   SDK appends "/chat/completions"
-        var request = BuildChatRequest($"{BaseUrl}/v1beta/openai/chat/completions");
+        // This is the EXACT URL the native GeminiProvider constructs:
+        //   {baseUrl}/models/{model}:generateContent?key={apiKey}
+        var request = BuildNativeRequest($"{BaseUrl}/v1beta/models/gemini-2.5-flash:generateContent?key=dummy_invalid_key");
 
         var response = await _http.SendAsync(request);
 
         // 400/401/403 = credentials rejected, but endpoint exists.
         response.StatusCode.Should().NotBe(HttpStatusCode.NotFound,
-            "v1beta/openai/chat/completions should exist — a non-404 proves the URL is correct");
+            "v1beta/models/gemini-2.5-flash:generateContent should exist — a non-404 proves the URL is correct");
     }
 
     [Fact]
-    public async Task WrongEndpointWithDoubleV1_IsRejected()
+    public async Task WrongEndpoint_WithOpenAiChatCompletions_IsNotNativeApi()
     {
-        // The OLD buggy URL that doubled the path segment:
-        //   base = "https://generativelanguage.googleapis.com/v1beta/openai"
-        //   + SDK default "/v1" + "/chat/completions"
-        // Google routes this path but rejects it (400 Bad Request),
-        // confirming the extra /v1 segment is incorrect.
-        var request = BuildChatRequest($"{BaseUrl}/v1beta/openai/v1/chat/completions");
+        // The OLD OpenAI-compat URL: /v1beta/openai/chat/completions
+        // This may still exist on Google's side but is NOT what the native provider uses.
+        var request = BuildOpenAiCompatRequest($"{BaseUrl}/v1beta/openai/chat/completions");
 
         var response = await _http.SendAsync(request);
 
+        // We don't assert 404 because Google may still route this, but confirm it's
+        // a different path than the native API endpoint.
         response.StatusCode.Should().NotBe(HttpStatusCode.OK,
-            "the doubled /v1 path must not succeed — Google rejects it even though it routes");
-        response.StatusCode.Should().BeOneOf(
-            HttpStatusCode.BadRequest,
-            HttpStatusCode.Unauthorized,
-            HttpStatusCode.Forbidden,
-            HttpStatusCode.NotFound);
+            "the OpenAI-compat path should not succeed with a dummy key");
     }
 
     [Fact]
@@ -76,7 +69,28 @@ public sealed class GoogleEndpointLiveTests : IDisposable
 
     public void Dispose() => _http.Dispose();
 
-    private static HttpRequestMessage BuildChatRequest(string url)
+    private static HttpRequestMessage BuildNativeRequest(string url)
+    {
+        // Native Gemini REST API request body format.
+        var body = JsonSerializer.Serialize(new
+        {
+            contents = new[]
+            {
+                new
+                {
+                    role = "user",
+                    parts = new[] { new { text = "ping" } },
+                },
+            },
+        });
+
+        return new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json"),
+        };
+    }
+
+    private static HttpRequestMessage BuildOpenAiCompatRequest(string url)
     {
         var body = JsonSerializer.Serialize(new
         {
